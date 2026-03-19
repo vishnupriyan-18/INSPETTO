@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1026734944058",
+    "project_id": "inspetto-305f1",
+    "storage_bucket": "inspetto-305f1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1026734944058:android:36b960aadfea084e2c6a03",
+        "android_client_info": {
+          "package_name": "com.example.inspetto"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBK2QvwN204DVLAd67NIIlxS6UDDELjQ_M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
