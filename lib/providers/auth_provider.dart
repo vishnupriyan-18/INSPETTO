@@ -54,38 +54,57 @@ class AuthProvider extends ChangeNotifier {
   // ── Fetch employee details from Firestore ──
   Future<Map<String, dynamic>?> getEmployeeDetails(String employeeId) async {
     try {
-      // Check employees collection
-      QuerySnapshot empQuery = await _firestore
-          .collection('employees')
-          .where('employeeId', isEqualTo: employeeId.toUpperCase())
-          .limit(1)
-          .get();
+      final String upperId = employeeId.toUpperCase();
+      final String exactId = employeeId;
 
-      if (empQuery.docs.isNotEmpty) {
-        return empQuery.docs.first.data() as Map<String, dynamic>;
+      Future<Map<String, dynamic>?> checkDb(String collectionName, String field, String defaultRole) async {
+        QuerySnapshot q1 = await _firestore.collection(collectionName).where(field, isEqualTo: upperId).limit(1).get();
+        Map<String, dynamic>? data;
+        if (q1.docs.isNotEmpty) {
+          data = q1.docs.first.data() as Map<String, dynamic>;
+        } else {
+          QuerySnapshot q2 = await _firestore.collection(collectionName).where(field, isEqualTo: exactId).limit(1).get();
+          if (q2.docs.isNotEmpty) {
+            data = q2.docs.first.data() as Map<String, dynamic>;
+          }
+        }
+        
+        if (data != null) {
+          // Normalize data
+          if (!data.containsKey('employeeId') && data.containsKey(field)) {
+            data['employeeId'] = data[field];
+          }
+          if (!data.containsKey('role')) {
+            data['role'] = defaultRole;
+          }
+          return data;
+        }
+        return null;
       }
 
-      // Check hods collection
-      QuerySnapshot hodQuery = await _firestore
-          .collection('hods')
-          .where('employeeId', isEqualTo: employeeId.toUpperCase())
-          .limit(1)
-          .get();
+      // Check employees
+      Map<String, dynamic>? emp = await checkDb('employees', 'employeeId', 'field_officer');
+      if (emp != null) return emp;
 
-      if (hodQuery.docs.isNotEmpty) {
-        return hodQuery.docs.first.data() as Map<String, dynamic>;
-      }
+      // Check hods/hod
+      Map<String, dynamic>? hod = await checkDb('hods', 'employeeId', 'hod');
+      if (hod != null) return hod;
+      hod = await checkDb('hod', 'employeeId', 'hod');
+      if (hod != null) return hod;
+      hod = await checkDb('hods', 'hodId', 'hod');
+      if (hod != null) return hod;
+      hod = await checkDb('hod', 'hodId', 'hod');
+      if (hod != null) return hod;
 
-      // Check collectors collection
-      QuerySnapshot colQuery = await _firestore
-          .collection('collectors')
-          .where('employeeId', isEqualTo: employeeId.toUpperCase())
-          .limit(1)
-          .get();
-
-      if (colQuery.docs.isNotEmpty) {
-        return colQuery.docs.first.data() as Map<String, dynamic>;
-      }
+      // Check collectors/collector
+      Map<String, dynamic>? col = await checkDb('collectors', 'employeeId', 'collector');
+      if (col != null) return col;
+      col = await checkDb('collector', 'employeeId', 'collector');
+      if (col != null) return col;
+      col = await checkDb('collectors', 'collectorId', 'collector');
+      if (col != null) return col;
+      col = await checkDb('collector', 'collectorId', 'collector');
+      if (col != null) return col;
 
       return null;
     } catch (e) {
