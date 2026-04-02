@@ -1,96 +1,71 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:geocoding/geocoding.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:local_auth/local_auth.dart';
+import 'package:provider/provider.dart';
 import 'package:signature/signature.dart';
-import 'package:inspetto/themes/app_colors.dart';
+import 'package:geolocator/geolocator.dart';
+import '../../models/task_model.dart';
+import '../../models/visit_model.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/visit_provider.dart';
+import '../../services/location_service.dart';
+import '../../services/storage_service.dart';
 
 class SubmitVisitScreen extends StatefulWidget {
-  final String taskId;
-  const SubmitVisitScreen({super.key, required this.taskId});
+  final TaskModel task;
+  const SubmitVisitScreen({super.key, required this.task});
 
   @override
   State<SubmitVisitScreen> createState() => _SubmitVisitScreenState();
 }
 
 class _SubmitVisitScreenState extends State<SubmitVisitScreen> {
-  final TextEditingController _remarksController = TextEditingController();
-  final LocalAuthentication _localAuth = LocalAuthentication();
-  double _progress = 0;
-  bool _isFinalVisit = false;
-  bool _isLoading = false;
-  bool _locationLoading = true;
-  File? _photo;
-  Uint8List? _signature;
-  double _latitude = 0.0;
-  double _longitude = 0.0;
-  String _gpsLocation = 'Fetching location...';
-  String _photoDateTime = '';
-  List<File> _additionalFiles = [];
-
-  final SignatureController _signatureController = SignatureController(
+  final _remarksCtrl = TextEditingController();
+  final _sigCtrl = SignatureController(
     penStrokeWidth: 3,
     penColor: Colors.black,
     exportBackgroundColor: Colors.white,
   );
 
+  File? _photo;
+  Position? _position;
+  String? _address;
+  double _progress = 0;
+  bool _isFinal = false;
+  bool _isLoading = false;
+
   @override
   void initState() {
     super.initState();
-    _getLocation();
+    _fetchLocation();
   }
 
-  void _getLocation() async {
-    try {
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          setState(() {
-            _gpsLocation = 'Location permission denied';
-            _locationLoading = false;
-          });
-          return;
-        }
-      }
+  @override
+  void dispose() {
+    _remarksCtrl.dispose();
+    _sigCtrl.dispose();
+    super.dispose();
+  }
 
-      if (permission == LocationPermission.deniedForever) {
+  Future<void> _fetchLocation() async {
+    final pos = await LocationService().getCurrentPosition();
+    if (pos != null) {
+      final addr = await LocationService()
+          .getAddressFromCoords(pos.latitude, pos.longitude);
+      if (mounted) {
         setState(() {
-          _gpsLocation = 'Location permission permanently denied';
-          _locationLoading = false;
-        });
-        return;
-      }
-
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
-
-      List<Placemark> placemarks = await placemarkFromCoordinates(
-        position.latitude,
-        position.longitude,
-      );
-
-      if (placemarks.isNotEmpty) {
-        Placemark place = placemarks[0];
-        setState(() {
-          _latitude = position.latitude;
-          _longitude = position.longitude;
-          _gpsLocation =
-              '${position.latitude.toStringAsFixed(4)}° N, '
-              '${position.longitude.toStringAsFixed(4)}° E'
-              ' — ${place.street}, ${place.locality}';
-          _locationLoading = false;
+          _position = pos;
+          _address = addr;
         });
       }
-    } catch (e) {
-      setState(() {
-        _gpsLocation = 'Error getting location';
-        _locationLoading = false;
-      });
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Failed to get GPS location. Required to submit!'),
+              backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
@@ -98,202 +73,87 @@ class _SubmitVisitScreenState extends State<SubmitVisitScreen> {
     final picker = ImagePicker();
     final file = await picker.pickImage(
       source: ImageSource.camera,
-      imageQuality: 80,
+      imageQuality: 70,
     );
     if (file != null) {
-      final now = DateTime.now();
-      setState(() {
-        _photo = File(file.path);
-        _photoDateTime =
-            '${now.day.toString().padLeft(2, '0')}/'
-            '${now.month.toString().padLeft(2, '0')}/'
-            '${now.year}  '
-            '${now.hour.toString().padLeft(2, '0')}:'
-            '${now.minute.toString().padLeft(2, '0')}:'
-            '${now.second.toString().padLeft(2, '0')}';
-      });
+      setState(() => _photo = File(file.path));
     }
   }
 
-  Future<void> _pickAdditionalFile() async {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Add Attachment',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 20),
-            ListTile(
-              leading: const CircleAvatar(
-                backgroundColor: Colors.black,
-                child: Icon(Icons.camera_alt, color: Colors.white, size: 20),
-              ),
-              title: const Text('Take Photo'),
-              onTap: () async {
-                Navigator.pop(context);
-                final picker = ImagePicker();
-                final file = await picker.pickImage(
-                  source: ImageSource.camera,
-                  imageQuality: 80,
-                );
-                if (file != null) {
-                  setState(() => _additionalFiles.add(File(file.path)));
-                }
-              },
-            ),
-            ListTile(
-              leading: const CircleAvatar(
-                backgroundColor: Colors.black,
-                child: Icon(Icons.photo_library,
-                    color: Colors.white, size: 20),
-              ),
-              title: const Text('Choose from Gallery'),
-              onTap: () async {
-                Navigator.pop(context);
-                final picker = ImagePicker();
-                final file = await picker.pickImage(
-                  source: ImageSource.gallery,
-                  imageQuality: 80,
-                );
-                if (file != null) {
-                  setState(() => _additionalFiles.add(File(file.path)));
-                }
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _saveSignature() async {
-    final sig = await _signatureController.toPngBytes();
-    if (sig != null) {
-      setState(() => _signature = sig);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Signature saved!'),
-          backgroundColor: Colors.black,
-        ),
-      );
-    }
-  }
-
-  Future<bool> _authenticateWithBiometric() async {
-    try {
-      final bool canAuthenticate = await _localAuth.canCheckBiometrics ||
-          await _localAuth.isDeviceSupported();
-
-      if (!canAuthenticate) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Biometric not available on this device!'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return false;
-      }
-
-      final bool authenticated = await _localAuth.authenticate(
-        localizedReason: 'Authenticate to submit visit report',
-        options: const AuthenticationOptions(
-          biometricOnly: false,
-          stickyAuth: true,
-        ),
-      );
-
-      return authenticated;
-    } catch (e) {
-      print('Biometric error: $e');
-      return false;
-    }
-  }
-
-  void _submitVisit() async {
+  Future<void> _submit() async {
     if (_photo == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please take a photo!'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _snack('Photo is required!', Colors.red);
       return;
     }
-
-    if (_signature == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please add your signature!'),
-          backgroundColor: Colors.red,
-        ),
-      );
+    if (_position == null) {
+      _snack('GPS location is required!', Colors.red);
       return;
     }
-
-    if (_remarksController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please add remarks!'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    if (_latitude == 0.0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please wait for GPS location!'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    final bool authenticated = await _authenticateWithBiometric();
-    if (!authenticated) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Authentication failed! Cannot submit report.'),
-          backgroundColor: Colors.red,
-        ),
-      );
+    if (_sigCtrl.isEmpty) {
+      _snack('Signature is required!', Colors.red);
       return;
     }
 
     setState(() => _isLoading = true);
 
-    // TODO: Upload photo to Firebase Storage
-    // TODO: Save visit data to Firestore
-    await Future.delayed(const Duration(seconds: 2));
+    try {
+      final officer =
+          Provider.of<AuthProvider>(context, listen: false).currentUser!;
+      final signatureBytes = await _sigCtrl.toPngBytes();
 
-    setState(() => _isLoading = false);
+      // 1. Upload photo
+      final photoUrl = await StorageService()
+          .uploadVisitPhoto(widget.task.id, officer.employeeId, _photo!);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Visit report submitted successfully!'),
-        backgroundColor: Colors.black,
-      ),
-    );
+      // 2. Upload sig
+      String sigUrl = '';
+      if (signatureBytes != null) {
+        sigUrl = await StorageService().uploadSignature(
+            widget.task.id, officer.employeeId, signatureBytes);
+      }
 
-    Navigator.pop(context);
-    Navigator.pop(context);
+      // 3. Build model
+      final visit = VisitModel(
+        id: '',
+        taskId: widget.task.id,
+        officerId: officer.employeeId,
+        photoUrl: photoUrl,
+        latitude: _position!.latitude,
+        longitude: _position!.longitude,
+        address: _address ?? '',
+        gpsAccuracy: _position!.accuracy,
+        progress: _progress.toInt(),
+        remarks: _remarksCtrl.text.trim(),
+        signatureUrl: sigUrl,
+        isFinalVisit: _isFinal,
+        department: officer.department,
+        district: officer.district,
+      );
+
+      // 4. Save
+      await Provider.of<VisitProvider>(context, listen: false).submitVisit(
+        visit: visit,
+        hodId: widget.task.createdBy,
+        lastVisitTime: widget.task.lastVisitAt,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Visit report submitted successfully!'),
+              backgroundColor: Colors.green),
+        );
+        Navigator.pop(context); // back to list
+      }
+    } catch (e) {
+      _snack('Error: $e', Colors.red);
+    }
+    if (mounted) setState(() => _isLoading = false);
   }
 
-  @override
-  void dispose() {
-    _remarksController.dispose();
-    _signatureController.dispose();
-    super.dispose();
+  void _snack(String msg, Color c) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg), backgroundColor: c));
   }
 
   @override
@@ -301,21 +161,19 @@ class _SubmitVisitScreenState extends State<SubmitVisitScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
+        title: const Text('Submit Visit',
+            style: TextStyle(color: Colors.white)),
         backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        title: const Text('Submit Visit Report'),
-        centerTitle: true,
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-
-            // ── PHOTO SECTION ──
-            const Text('Photo Proof',
-                style: TextStyle(
-                    fontSize: 14, fontWeight: FontWeight.bold)),
+            // Photo Section
+            const Text('Camera Capture *',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 8),
             GestureDetector(
               onTap: _takePhoto,
@@ -323,14 +181,9 @@ class _SubmitVisitScreenState extends State<SubmitVisitScreen> {
                 height: 200,
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
+                  color: Colors.grey.shade100,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: _photo != null
-                        ? Colors.black
-                        : AppColors.border,
-                    width: _photo != null ? 2 : 1,
-                  ),
+                  border: Border.all(color: Colors.grey.shade300),
                 ),
                 child: _photo != null
                     ? ClipRRect(
@@ -340,8 +193,7 @@ class _SubmitVisitScreenState extends State<SubmitVisitScreen> {
                     : const Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.camera_alt_outlined,
-                              size: 50, color: Colors.grey),
+                          Icon(Icons.camera_alt, size: 40, color: Colors.grey),
                           SizedBox(height: 8),
                           Text('Tap to take photo',
                               style: TextStyle(color: Colors.grey)),
@@ -349,326 +201,139 @@ class _SubmitVisitScreenState extends State<SubmitVisitScreen> {
                       ),
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
 
-            // ── GPS + DATE TIME SECTION ──
-            const Text('GPS Location',
-                style: TextStyle(
-                    fontSize: 14, fontWeight: FontWeight.bold)),
+            // GPS Status
+            const Text('Location Data *',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 8),
             Container(
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: AppColors.surface,
+                color: _position != null
+                    ? Colors.green.shade50
+                    : Colors.orange.shade50,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: _latitude != 0.0
-                      ? Colors.black
-                      : AppColors.border,
-                  width: _latitude != 0.0 ? 2 : 1,
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      _locationLoading
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.black),
-                            )
-                          : Icon(
-                              _latitude != 0.0
-                                  ? Icons.location_on
-                                  : Icons.location_off,
-                              color: _latitude != 0.0
-                                  ? Colors.black
-                                  : Colors.red,
-                              size: 20,
-                            ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _gpsLocation,
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                      ),
-                      if (_latitude != 0.0)
-                        const Icon(Icons.check_circle,
-                            color: AppColors.approved, size: 16),
-                    ],
-                  ),
-                  // Date and time — shows when photo is taken
-                  if (_photoDateTime.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        const Icon(Icons.access_time,
-                            size: 14, color: Colors.grey),
-                        const SizedBox(width: 6),
-                        Text(
-                          _photoDateTime,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // ── PROGRESS SECTION ──
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Work Progress',
-                    style: TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.bold)),
-                Text(
-                  '${_progress.toInt()}%',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            SliderTheme(
-              data: SliderTheme.of(context).copyWith(
-                activeTrackColor: Colors.black,
-                inactiveTrackColor: AppColors.border,
-                thumbColor: Colors.black,
-                overlayColor: Colors.black.withOpacity(0.1),
-              ),
-              child: Slider(
-                value: _progress,
-                min: 0,
-                max: 100,
-                divisions: 10,
-                onChanged: (value) =>
-                    setState(() => _progress = value),
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // ── REMARKS + ADD FILE SECTION ──
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Observations / Remarks',
-                    style: TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.bold)),
-                GestureDetector(
-                  onTap: _pickAdditionalFile,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: Colors.black,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.add, color: Colors.white, size: 16),
-                        SizedBox(width: 4),
-                        Text(
-                          'Add File',
-                          style: TextStyle(
-                              color: Colors.white, fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _remarksController,
-              maxLines: 4,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: InputDecoration(
-                hintText:
-                    'Enter your observations about this visit...',
-                hintStyle:
-                    const TextStyle(color: AppColors.textHint),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide:
-                      const BorderSide(color: AppColors.border),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(
-                      color: Colors.black, width: 2),
-                ),
-              ),
-            ),
-
-            // Additional files thumbnails
-            if (_additionalFiles.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              const Text('Attachments',
-                  style: TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              SizedBox(
-                height: 80,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _additionalFiles.length,
-                  itemBuilder: (context, index) {
-                    return Stack(
-                      children: [
-                        Container(
-                          margin: const EdgeInsets.only(right: 8),
-                          width: 80,
-                          height: 80,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: AppColors.border),
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: Image.file(
-                              _additionalFiles[index],
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                        ),
-                        Positioned(
-                          top: 0,
-                          right: 8,
-                          child: GestureDetector(
-                            onTap: () => setState(
-                                () => _additionalFiles.removeAt(index)),
-                            child: const CircleAvatar(
-                              radius: 10,
-                              backgroundColor: Colors.red,
-                              child: Icon(Icons.close,
-                                  size: 12, color: Colors.white),
-                            ),
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ),
-            ],
-            const SizedBox(height: 20),
-
-            // ── SIGNATURE SECTION ──
-            const Text('Digital Signature',
-                style: TextStyle(
-                    fontSize: 14, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Container(
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.black, width: 2),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Signature(
-                controller: _signatureController,
-                height: 120,
-                backgroundColor: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Colors.black),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8)),
-                    ),
-                    onPressed: () {
-                      _signatureController.clear();
-                      setState(() => _signature = null);
-                    },
-                    child: const Text('Clear',
-                        style: TextStyle(color: Colors.black)),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.black,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8)),
-                    ),
-                    onPressed: _saveSignature,
-                    child: const Text('Save Signature',
-                        style: TextStyle(color: Colors.white)),
-                  ),
-                ),
-              ],
-            ),
-
-            if (_signature != null) ...[
-              const SizedBox(height: 8),
-              const Row(
-                children: [
-                  Icon(Icons.check_circle,
-                      color: AppColors.approved, size: 16),
-                  SizedBox(width: 4),
-                  Text('Signature saved!',
-                      style: TextStyle(
-                          color: AppColors.approved, fontSize: 12)),
-                ],
-              ),
-            ],
-            const SizedBox(height: 20),
-
-            // ── FINAL VISIT TOGGLE ──
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.border),
+                    color: _position != null
+                        ? Colors.green.shade200
+                        : Colors.orange.shade200),
               ),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Mark as Final Visit',
-                          style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold)),
-                      Text('Work is 100% complete',
-                          style: TextStyle(
-                              fontSize: 12, color: Colors.grey)),
-                    ],
+                  Icon(
+                      _position != null
+                          ? Icons.check_circle
+                          : Icons.location_searching,
+                      color: _position != null ? Colors.green : Colors.orange),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                            _position != null
+                                ? 'GPS Coordinates Locked'
+                                : 'Fetching GPS...',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: _position != null
+                                    ? Colors.green.shade800
+                                    : Colors.orange.shade800)),
+                        if (_position != null)
+                          Text(
+                              '${_position!.latitude.toStringAsFixed(4)}, ${_position!.longitude.toStringAsFixed(4)}\nAccuracy: ${_position!.accuracy.toStringAsFixed(1)}m\n${_address ?? ''}',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.green.shade900)),
+                      ],
+                    ),
                   ),
-                  Switch(
-                    value: _isFinalVisit,
-                    onChanged: (value) =>
-                        setState(() => _isFinalVisit = value),
-                    activeColor: Colors.black,
-                  ),
+                  if (_position == null)
+                    IconButton(
+                      icon: const Icon(Icons.refresh),
+                      onPressed: _fetchLocation,
+                    )
                 ],
               ),
             ),
-            const SizedBox(height: 30),
+            const SizedBox(height: 24),
 
-            // ── SUBMIT BUTTON ──
+            // Progress Slider
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Work Progress (%)',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                Text('${_progress.toInt()}%',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              ],
+            ),
+            Slider(
+              value: _progress,
+              min: 0,
+              max: 100,
+              divisions: 20,
+              activeColor: Colors.black,
+              onChanged: (val) => setState(() => _progress = val),
+            ),
+            CheckboxListTile(
+              title: const Text('Mark as Final Visit?'),
+              value: _isFinal,
+              activeColor: Colors.black,
+              controlAffinity: ListTileControlAffinity.leading,
+              onChanged: (val) => setState(() => _isFinal = val ?? false),
+              contentPadding: EdgeInsets.zero,
+            ),
+            const SizedBox(height: 16),
+
+            // Remarks
+            const Text('Remarks',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _remarksCtrl,
+              maxLines: 3,
+              decoration: InputDecoration(
+                hintText: 'Add any observation notes...',
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: const BorderSide(color: Colors.black)),
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Signature
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Officer Signature *',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                TextButton(
+                  onPressed: () => _sigCtrl.clear(),
+                  child: const Text('Clear', style: TextStyle(color: Colors.red)),
+                ),
+              ],
+            ),
+            Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey.shade300),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Signature(
+                  controller: _sigCtrl,
+                  height: 150,
+                  backgroundColor: Colors.grey.shade50,
+                ),
+              ),
+            ),
+            const SizedBox(height: 40),
+
+            // Submit Button
             SizedBox(
               width: double.infinity,
               height: 54,
@@ -678,18 +343,14 @@ class _SubmitVisitScreenState extends State<SubmitVisitScreen> {
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12)),
                 ),
-                onPressed: _isLoading ? null : _submitVisit,
+                onPressed: _isLoading ? null : _submit,
                 child: _isLoading
-                    ? const CircularProgressIndicator(
-                        color: Colors.white)
-                    : const Text(
-                        'Submit Visit Report',
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text('Submit Visit Report',
                         style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold)),
               ),
             ),
             const SizedBox(height: 20),

@@ -1,33 +1,52 @@
-// Handles all task operations
-// Member 3 (HOD screens) uses this
 import 'package:flutter/material.dart';
 import '../models/task_model.dart';
+import '../models/activity_log_model.dart';
+import '../models/notification_model.dart';
+import '../services/firebase_service.dart';
 
 class TaskProvider extends ChangeNotifier {
+  final FirestoreService _fs = FirestoreService();
+
   List<TaskModel> _tasks = [];
   List<TaskModel> get tasks => _tasks;
 
-  // TODO: HOD creates a task
-  Future<void> createTask(TaskModel task) async {}
+  Stream<List<TaskModel>> foTasksStream(String officerId) =>
+      _fs.getTasksForOfficer(officerId);
 
-  // TODO: HOD assigns task to officer
-  Future<void> assignTask(String taskId, String officerId) async {}
+  Stream<List<TaskModel>> hodTasksStream(String hodId) =>
+      _fs.getTasksForHod(hodId);
 
-  // TODO: fetch tasks for field officer
-  Future<List<TaskModel>> fetchOfficerTasks(String officerId) async => [];
+  Stream<List<TaskModel>> districtTasksStream(String district) =>
+      _fs.getTasksByDistrict(district);
 
-  // TODO: fetch all tasks for HOD
-  Future<List<TaskModel>> fetchAllTasks() async => [];
+  Future<String> createTask(TaskModel task, String hodId) async {
+    final taskId = await _fs.createTask(task);
+    await _fs.sendNotification(NotificationModel(
+      toUserId: task.assignedTo,
+      taskId: taskId,
+      title: 'New Task Assigned',
+      message: '${task.title} has been assigned to you.',
+      type: 'task_assigned',
+    ));
+    await _fs.addActivityLog(ActivityLogModel(
+      action: 'task_created',
+      userId: hodId,
+      taskId: taskId,
+      remarks: 'Task "${task.title}" created and assigned to ${task.assignedTo}',
+    ));
+    return taskId;
+  }
 
-  // TODO: officer accepts task
-  Future<void> acceptTask(String taskId) async {}
+  Future<void> acceptTask(String taskId, String officerId) async {
+    await _fs.updateTaskStatus(taskId, 'accepted');
+    await _fs.addActivityLog(ActivityLogModel(
+      action: 'task_accepted',
+      userId: officerId,
+      taskId: taskId,
+    ));
+  }
 
-  // TODO: HOD approves task
-  Future<void> approveTask(String taskId) async {}
-
-  // TODO: HOD rejects task
-  Future<void> rejectTask(String taskId, String remarks) async {}
-
-  // TODO: update task status
-  Future<void> updateStatus(String taskId, String status) async {}
+  Future<void> updateTaskStatus(String taskId, String status) async {
+    await _fs.updateTaskStatus(taskId, status);
+  }
 }

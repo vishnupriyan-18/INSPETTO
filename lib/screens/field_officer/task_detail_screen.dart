@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:inspetto/themes/app_colors.dart';
-import 'package:inspetto/screens/field_officer/submit_visit_screen.dart';
+import 'package:provider/provider.dart';
+import '../../models/task_model.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/task_provider.dart';
+import '../../widgets/status_badge.dart';
+import 'submit_visit_screen.dart';
 
 class TaskDetailScreen extends StatefulWidget {
-  final Map<String, dynamic> task;
+  final TaskModel task;
   const TaskDetailScreen({super.key, required this.task});
 
   @override
@@ -11,291 +15,137 @@ class TaskDetailScreen extends StatefulWidget {
 }
 
 class _TaskDetailScreenState extends State<TaskDetailScreen> {
-  String capitalizeFirst(String text) {
-    if (text.isEmpty) return text;
-    return text[0].toUpperCase() + text.substring(1);
-  }
+  bool _isLoading = false;
 
-  Color getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'assigned': return Colors.blue;
-      case 'accepted': return Colors.orange;
-      case 'inprogress': return Colors.amber;
-      case 'completed': return Colors.purple;
-      case 'approved': return AppColors.approved;
-      case 'rejected': return AppColors.rejected;
-      default: return Colors.grey;
+  Future<void> _acceptTask() async {
+    setState(() => _isLoading = true);
+    try {
+      final officerId = Provider.of<AuthProvider>(context, listen: false)
+          .currentUser?.employeeId ?? '';
+      await Provider.of<TaskProvider>(context, listen: false)
+          .acceptTask(widget.task.id, officerId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Task accepted!'), backgroundColor: Colors.green),
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+      }
     }
-  }
-
-  Color getPriorityColor(String priority) {
-    switch (priority.toLowerCase()) {
-      case 'high': return AppColors.rejected;
-      case 'medium': return Colors.orange;
-      case 'low': return AppColors.approved;
-      default: return Colors.grey;
-    }
-  }
-
-  void _acceptTask() async {
-    // TODO: Update status in Firebase
-    setState(() {
-      widget.task['status'] = 'accepted';
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Task accepted successfully!'),
-        backgroundColor: Colors.black,
-      ),
-    );
+    if (mounted) setState(() => _isLoading = false);
   }
 
   @override
   Widget build(BuildContext context) {
-    final task = widget.task;
-    final status = task['status'] ?? '';
+    final t = widget.task;
+    final canAccept = t.status == 'assigned';
+    final canSubmit = t.status == 'accepted' || t.status == 'inprogress' || t.status == 'rejected';
 
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        title: const Text('Task Details'),
-        centerTitle: true,
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: const Text('Task Details', style: TextStyle(color: Colors.white)),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-
-            // Status badge
-            Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 6),
-                decoration: BoxDecoration(
-                  color: getStatusColor(status).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: getStatusColor(status)),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(t.title,
+                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                 ),
-                child: Text(
-                  capitalizeFirst(status),
-                  style: TextStyle(
-                    color: getStatusColor(status),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // Task title
-            Text(
-              task['title'] ?? '',
-              style: const TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: Colors.black,
-              ),
+                StatusBadge(status: t.status),
+              ],
             ),
             const SizedBox(height: 20),
-
-            // Details card
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: Column(
-                children: [
-                  _detailRow(
-                    Icons.location_on_outlined,
-                    'Location',
-                    task['location'] ?? '',
-                  ),
-                  const Divider(height: 20),
-                  _detailRow(
-                    Icons.info_outline,
-                    'Purpose',
-                    task['purpose'] ?? '',
-                  ),
-                  const Divider(height: 20),
-                  _detailRow(
-                    Icons.flag_outlined,
-                    'Priority',
-                    capitalizeFirst(task['priority'] ?? ''),
-                    valueColor: getPriorityColor(task['priority'] ?? ''),
-                  ),
-                  const Divider(height: 20),
-                  _detailRow(
-                    Icons.calendar_today_outlined,
-                    'Deadline',
-                    task['deadline'] ?? '',
-                  ),
-                  const Divider(height: 20),
-                  _detailRow(
-                    Icons.person_outline,
-                    'Assigned by',
-                    task['assignedBy'] ?? 'HOD',
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 30),
-
-            // Accept button - show only if status is assigned
-            if (status == 'assigned')
-              SizedBox(
-                width: double.infinity,
-                height: 54,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  onPressed: _acceptTask,
-                  icon: const Icon(Icons.check_circle_outline,
-                      color: Colors.white),
-                  label: const Text(
-                    'Accept Task',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-
-            // Submit visit button - show if accepted or inprogress
-            if (status == 'accepted' || status == 'inprogress')
-              SizedBox(
-                width: double.infinity,
-                height: 54,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => SubmitVisitScreen(
-                          taskId: task['taskId'],
-                        ),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.upload_outlined,
-                      color: Colors.white),
-                  label: const Text(
-                    'Submit Visit Report',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-
-            // Approved message
-            if (status == 'approved')
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.approved.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.approved),
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.check_circle, color: AppColors.approved),
-                    SizedBox(width: 8),
-                    Text(
-                      'This task has been approved!',
-                      style: TextStyle(
-                        color: AppColors.approved,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-            // Rejected message
-            if (status == 'rejected')
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.rejected.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.rejected),
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.cancel, color: AppColors.rejected),
-                    SizedBox(width: 8),
-                    Text(
-                      'Task rejected. Please revisit!',
-                      style: TextStyle(
-                        color: AppColors.rejected,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+            _detailRow(Icons.location_on, 'Location', t.location),
+            _detailRow(Icons.description, 'Purpose', t.purpose),
+            _detailRow(Icons.flag, 'Priority', t.priority.toUpperCase()),
+            _detailRow(Icons.calendar_today, 'Deadline',
+                '${t.deadline.day}/${t.deadline.month}/${t.deadline.year}'),
+            _detailRow(Icons.person, 'Assigned By', t.createdBy),
+            _detailRow(Icons.camera_alt, 'Total Visits', '${t.totalVisits}'),
+            if (t.lastVisitAt != null)
+              _detailRow(Icons.access_time, 'Last Visit At',
+                  '${t.lastVisitAt!.day}/${t.lastVisitAt!.month}/${t.lastVisitAt!.year} ${t.lastVisitAt!.hour}:${t.lastVisitAt!.minute.toString().padLeft(2, '0')}'),
           ],
         ),
       ),
+      bottomNavigationBar: (canAccept || canSubmit)
+          ? SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: SizedBox(
+                  height: 54,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.black,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: _isLoading
+                        ? null
+                        : canAccept
+                            ? _acceptTask
+                            : () => Navigator.pushReplacement(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (_) =>
+                                          SubmitVisitScreen(task: t)),
+                                ),
+                    child: _isLoading
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : Text(canAccept ? 'Accept Task' : 'Submit Visit Report',
+                            style: const TextStyle(
+                                fontSize: 16,
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ),
+            )
+          : null,
     );
   }
 
-  Widget _detailRow(IconData icon, String label, String value,
-      {Color? valueColor}) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 18, color: Colors.black),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                value,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: valueColor ?? Colors.black,
-                ),
-              ),
-            ],
+  Widget _detailRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+                color: Colors.grey.shade100, shape: BoxShape.circle),
+            child: Icon(icon, color: Colors.black54, size: 20),
           ),
-        ),
-      ],
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label,
+                    style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                const SizedBox(height: 4),
+                Text(value,
+                    style: const TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.w500)),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

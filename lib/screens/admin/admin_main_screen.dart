@@ -2,37 +2,32 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/notification_bell.dart';
-import 'hod_home_screen.dart';
-import 'create_task_screen.dart';
-import 'hod_tasks_screen.dart';
-import 'hod_officers_screen.dart';
+import 'admin_dashboard_screen.dart';
+import 'create_employee_screen.dart';
+import 'manage_employees_screen.dart';
 
-class HodMainScreen extends StatefulWidget {
-  const HodMainScreen({super.key});
+class AdminMainScreen extends StatefulWidget {
+  const AdminMainScreen({super.key});
 
   @override
-  State<HodMainScreen> createState() => _HodMainScreenState();
+  State<AdminMainScreen> createState() => _AdminMainScreenState();
 }
 
-class _HodMainScreenState extends State<HodMainScreen> {
+class _AdminMainScreenState extends State<AdminMainScreen> {
   int _index = 0;
 
   @override
   Widget build(BuildContext context) {
     final screens = [
-      const HodHomeScreen(),
-      const CreateTaskScreen(),
-      const HodTasksScreen(),
-      const HodOfficersScreen(),
+      const AdminDashboardScreen(),
+      const CreateEmployeeScreen(),
+      const ManageEmployeesScreen(),
     ];
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.black,
-        title: const Text('INSPETTO HOD',
-            style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.5)),
+        title: const Text('INSPETTO Admin',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
         actions: [
           const NotificationBell(iconColor: Colors.white),
           IconButton(
@@ -56,13 +51,11 @@ class _HodMainScreenState extends State<HodMainScreen> {
         onTap: (i) => setState(() => _index = i),
         items: const [
           BottomNavigationBarItem(
-              icon: Icon(Icons.home_outlined), label: 'Dashboard'),
+              icon: Icon(Icons.dashboard_outlined), label: 'Dashboard'),
           BottomNavigationBarItem(
-              icon: Icon(Icons.add_task), label: 'Create Task'),
+              icon: Icon(Icons.person_add_outlined), label: 'Add Employee'),
           BottomNavigationBarItem(
-              icon: Icon(Icons.list_alt_outlined), label: 'Tasks'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.people_outline), label: 'Officers'),
+              icon: Icon(Icons.group_outlined), label: 'Employees'),
         ],
       ),
     );

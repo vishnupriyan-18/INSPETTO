@@ -43,6 +43,8 @@ class _LoginSelectionScreenState extends State<LoginSelectionScreen> {
 
     print('Step 2 - Employee data: $employeeData');
 
+    if (!mounted) return;
+
     if (employeeData == null) {
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -54,11 +56,13 @@ class _LoginSelectionScreenState extends State<LoginSelectionScreen> {
       return;
     }
 
-    print('Step 3 - Sending OTP to: ${employeeData['phone']}');
+    print('Step 3 - Sending OTP to: ${employeeData.phone}');
 
-    final otpSent = await authProvider.sendOTP(employeeData['phone']);
+    final otpSent = await authProvider.sendOTP(employeeData.phone);
 
     print('Step 4 - OTP sent: $otpSent');
+
+    if (!mounted) return;
 
     setState(() => _isLoading = false);
 

@@ -1,28 +1,91 @@
-// User model for all 3 roles: collector, hod, field_officer
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class UserModel {
-  final String id;
+  final String employeeId;
   final String name;
   final String phone;
-  final String role; // 'collector' | 'hod' | 'field_officer'
-  final String district;
+  final String role; // it_admin | hod | field_officer | collector
   final String department;
+  final String district;
+  final String hodId;
+  final bool isActive;
+  final bool createdByAdmin;
+  final String fcmToken;
+  final DateTime createdAt;
 
   UserModel({
-    required this.id,
+    required this.employeeId,
     required this.name,
     required this.phone,
     required this.role,
-    required this.district,
     required this.department,
-  });
+    required this.district,
+    this.hodId = '',
+    this.isActive = true,
+    this.createdByAdmin = true,
+    this.fcmToken = '',
+    DateTime? createdAt,
+  }) : createdAt = createdAt ?? DateTime.now();
 
-  factory UserModel.fromMap(Map<String, dynamic> map) {
-    // TODO: implement
-    throw UnimplementedError();
+  factory UserModel.fromMap(Map<String, dynamic> map, {String? docId}) {
+    return UserModel(
+      employeeId: map['employeeId'] ?? docId ?? '',
+      name: map['name'] ?? '',
+      phone: map['phone'] ?? '',
+      role: map['role'] ?? 'field_officer',
+      department: map['department'] ?? '',
+      district: map['district'] ?? '',
+      hodId: map['hodId'] ?? '',
+      isActive: map['isActive'] ?? true,
+      createdByAdmin: map['createdByAdmin'] ?? true,
+      fcmToken: map['fcmToken'] ?? '',
+      createdAt: map['createdAt'] is Timestamp
+          ? (map['createdAt'] as Timestamp).toDate()
+          : DateTime.now(),
+    );
   }
 
   Map<String, dynamic> toMap() {
-    // TODO: implement
-    throw UnimplementedError();
+    return {
+      'employeeId': employeeId,
+      'name': name,
+      'phone': phone,
+      'role': role,
+      'department': department,
+      'district': district,
+      'hodId': hodId,
+      'isActive': isActive,
+      'createdByAdmin': createdByAdmin,
+      'fcmToken': fcmToken,
+      'createdAt': Timestamp.fromDate(createdAt),
+    };
+  }
+
+  UserModel copyWith({
+    String? employeeId,
+    String? name,
+    String? phone,
+    String? role,
+    String? department,
+    String? district,
+    String? hodId,
+    bool? isActive,
+    bool? createdByAdmin,
+    String? fcmToken,
+    DateTime? createdAt,
+  }) {
+    return UserModel(
+      employeeId: employeeId ?? this.employeeId,
+      name: name ?? this.name,
+      phone: phone ?? this.phone,
+      role: role ?? this.role,
+      department: department ?? this.department,
+      district: district ?? this.district,
+      hodId: hodId ?? this.hodId,
+      isActive: isActive ?? this.isActive,
+      createdByAdmin: createdByAdmin ?? this.createdByAdmin,
+      fcmToken: fcmToken ?? this.fcmToken,
+      createdAt: createdAt ?? this.createdAt,
+    );
   }
 }

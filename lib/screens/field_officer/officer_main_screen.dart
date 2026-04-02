@@ -1,97 +1,60 @@
 import 'package:flutter/material.dart';
-import 'package:inspetto/screens/field_officer/officer_home_screen.dart';
-import 'package:inspetto/screens/field_officer/officer_history_screen.dart';
-import 'package:inspetto/themes/app_colors.dart';
+import 'package:provider/provider.dart';
+import '../../providers/auth_provider.dart';
+import '../../widgets/notification_bell.dart';
+import 'officer_home_screen.dart';
+import 'officer_history_screen.dart';
 
 class OfficerMainScreen extends StatefulWidget {
-  final String officerId;
-  final String officerName;
-  const OfficerMainScreen({
-    super.key,
-    required this.officerId,
-    required this.officerName,
-  });
+  const OfficerMainScreen({super.key});
 
   @override
   State<OfficerMainScreen> createState() => _OfficerMainScreenState();
 }
 
 class _OfficerMainScreenState extends State<OfficerMainScreen> {
-  int _selectedIndex = 0;
+  int _index = 0;
 
   @override
   Widget build(BuildContext context) {
+    final screens = [
+      const OfficerHomeScreen(),
+      const OfficerHistoryScreen(),
+    ];
     return Scaffold(
-      backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        title: Text(
-          _selectedIndex == 0 ? 'My Tasks' : 'History',
-        ),
-        centerTitle: true,
+        title: const Text('INSPETTO Officer',
+            style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.5)),
         actions: [
+          const NotificationBell(iconColor: Colors.white),
           IconButton(
-            icon: const Icon(Icons.account_circle_outlined),
-            onPressed: () {
-              showDialog(
-                context: context,
-                builder: (_) => AlertDialog(
-                  title: const Text('Profile'),
-                  content: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const CircleAvatar(
-                        radius: 40,
-                        backgroundColor: Colors.black,
-                        child: Icon(Icons.person, color: Colors.white, size: 40),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        widget.officerName,
-                        style: const TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        widget.officerId,
-                        style: const TextStyle(color: Colors.grey),
-                      ),
-                    ],
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Close',
-                          style: TextStyle(color: Colors.black)),
-                    ),
-                  ],
-                ),
-              );
+            icon: const Icon(Icons.logout, color: Colors.white),
+            onPressed: () async {
+              await Provider.of<AuthProvider>(context, listen: false)
+                  .logout(context);
+              if (mounted) {
+                Navigator.pushNamedAndRemoveUntil(
+                    context, '/', (route) => false);
+              }
             },
           ),
         ],
       ),
-      body: _selectedIndex == 0
-          ? OfficerHomeScreen(officerId: widget.officerId)
-          : OfficerHistoryScreen(officerId: widget.officerId),
+      body: screens[_index],
       bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: (i) => setState(() => _selectedIndex = i),
+        currentIndex: _index,
         selectedItemColor: Colors.black,
         unselectedItemColor: Colors.grey,
-        backgroundColor: Colors.white,
+        onTap: (i) => setState(() => _index = i),
         items: const [
           BottomNavigationBarItem(
-            icon: Icon(Icons.assignment_outlined),
-            activeIcon: Icon(Icons.assignment),
-            label: 'My Tasks',
-          ),
+              icon: Icon(Icons.task_outlined), label: 'My Tasks'),
           BottomNavigationBarItem(
-            icon: Icon(Icons.history_outlined),
-            activeIcon: Icon(Icons.history),
-            label: 'History',
-          ),
+              icon: Icon(Icons.history), label: 'History'),
         ],
       ),
     );

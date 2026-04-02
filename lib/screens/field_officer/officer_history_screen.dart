@@ -1,279 +1,157 @@
 import 'package:flutter/material.dart';
-import 'package:inspetto/themes/app_colors.dart';
+import 'package:provider/provider.dart';
+import '../../models/task_model.dart';
+import '../../models/visit_model.dart';
+import '../../providers/auth_provider.dart';
+import '../../services/firebase_service.dart';
+import '../../widgets/status_badge.dart';
 
-class OfficerHistoryScreen extends StatefulWidget {
-  final String officerId;
-  const OfficerHistoryScreen({super.key, required this.officerId});
-
-  @override
-  State<OfficerHistoryScreen> createState() => _OfficerHistoryScreenState();
-}
-
-class _OfficerHistoryScreenState extends State<OfficerHistoryScreen> {
-  int _selectedFilter = 0;
-  final List<String> _filters = ['All', 'Approved', 'Rejected', 'Pending'];
-
-  // Dummy history data
-  final List<Map<String, dynamic>> _history = [
-    {
-      'taskId': 'TASK001',
-      'title': 'Road Repair Inspection',
-      'location': 'Anna Nagar, Chennai',
-      'date': '15 Mar 2025',
-      'progress': 100,
-      'status': 'approved',
-      'remarks': 'Road repair completed successfully',
-    },
-    {
-      'taskId': 'TASK002',
-      'title': 'Street Light Check',
-      'location': 'T Nagar, Chennai',
-      'date': '12 Mar 2025',
-      'progress': 60,
-      'status': 'rejected',
-      'remarks': 'Incomplete work found at site',
-    },
-    {
-      'taskId': 'TASK003',
-      'title': 'Drainage Inspection',
-      'location': 'Velachery, Chennai',
-      'date': '10 Mar 2025',
-      'progress': 80,
-      'status': 'pending',
-      'remarks': 'Work in progress',
-    },
-    {
-      'taskId': 'TASK004',
-      'title': 'Park Renovation Check',
-      'location': 'Adyar, Chennai',
-      'date': '08 Mar 2025',
-      'progress': 100,
-      'status': 'approved',
-      'remarks': 'Park renovation completed',
-    },
-  ];
-
-  List<Map<String, dynamic>> get _filteredHistory {
-    if (_selectedFilter == 0) return _history;
-    final filter = _filters[_selectedFilter].toLowerCase();
-    return _history
-        .where((h) => h['status'].toString().toLowerCase() == filter)
-        .toList();
-  }
-
-  Color getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'approved': return AppColors.approved;
-      case 'rejected': return AppColors.rejected;
-      case 'pending': return Colors.orange;
-      default: return Colors.grey;
-    }
-  }
-
-  IconData getStatusIcon(String status) {
-    switch (status.toLowerCase()) {
-      case 'approved': return Icons.check_circle;
-      case 'rejected': return Icons.cancel;
-      case 'pending': return Icons.hourglass_bottom;
-      default: return Icons.info;
-    }
-  }
-
-  String capitalizeFirst(String text) {
-    if (text.isEmpty) return text;
-    return text[0].toUpperCase() + text.substring(1);
-  }
+class OfficerHistoryScreen extends StatelessWidget {
+  const OfficerHistoryScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        // Filter chips
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: List.generate(
-                _filters.length,
-                (index) => GestureDetector(
-                  onTap: () => setState(() => _selectedFilter = index),
-                  child: Container(
-                    margin: const EdgeInsets.only(right: 8),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: _selectedFilter == index
-                          ? Colors.black
-                          : Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: _selectedFilter == index
-                            ? Colors.black
-                            : AppColors.border,
-                      ),
-                    ),
-                    child: Text(
-                      _filters[index],
-                      style: TextStyle(
-                        color: _selectedFilter == index
-                            ? Colors.white
-                            : Colors.black,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+    final officerId =
+        context.watch<AuthProvider>().currentUser?.employeeId ?? '';
+    return StreamBuilder<List<TaskModel>>(
+      stream: FirestoreService().getTasksForOfficer(officerId),
+      builder: (ctx, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(
+              child: CircularProgressIndicator(color: Colors.black));
+        }
+        final tasks = snap.data ?? [];
+        final historyTasks = tasks
+            .where((t) =>
+                t.status == 'completed' ||
+                t.status == 'approved' ||
+                t.status == 'rejected')
+            .toList();
+
+        if (historyTasks.isEmpty) {
+          return const Center(
+              child: Text('No history found',
+                  style: TextStyle(color: Colors.grey)));
+        }
+
+        return ListView.separated(
+          padding: const EdgeInsets.all(16),
+          itemCount: historyTasks.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 10),
+          itemBuilder: (ctx, i) => _HistoryCard(task: historyTasks[i]),
+        );
+      },
+    );
+  }
+}
+
+class _HistoryCard extends StatelessWidget {
+  final TaskModel task;
+  const _HistoryCard({required this.task});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: Colors.grey.shade200)),
+      child: ExpansionTile(
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(task.title,
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
             ),
-          ),
+            StatusBadge(status: task.status),
+          ],
         ),
-        const SizedBox(height: 8),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(
+              '${task.location}\nCompleted on: ${task.lastVisitAt?.day ?? '-'}/${task.lastVisitAt?.month ?? '-'}/${task.lastVisitAt?.year ?? '-'}',
+              style: const TextStyle(fontSize: 12, color: Colors.grey)),
+        ),
+        children: [
+          StreamBuilder<List<VisitModel>>(
+            stream: FirestoreService().getVisitsForTask(task.id),
+            builder: (ctx, snap) {
+              if (snap.connectionState == ConnectionState.waiting) {
+                return const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: CircularProgressIndicator(color: Colors.black),
+                );
+              }
+              final visits = snap.data ?? [];
+              if (visits.isEmpty) return const SizedBox.shrink();
 
-        // History list
-        Expanded(
-          child: _filteredHistory.isEmpty
-              ? const Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.history, size: 60, color: Colors.grey),
-                      SizedBox(height: 16),
-                      Text(
-                        'No visits found',
-                        style: TextStyle(fontSize: 16, color: Colors.grey),
-                      ),
-                    ],
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _filteredHistory.length,
-                  itemBuilder: (context, index) {
-                    final visit = _filteredHistory[index];
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppColors.border),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.04),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Title and status
-                          Row(
+              return Column(
+                children: visits.map((v) {
+                  return Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: const BoxDecoration(
+                      border: Border(
+                          top: BorderSide(color: Color(0xFFEEEEEE))),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: v.photoUrl.isNotEmpty
+                              ? Image.network(v.photoUrl,
+                                  width: 60, height: 60, fit: BoxFit.cover)
+                              : Container(
+                                  width: 60,
+                                  height: 60,
+                                  color: Colors.grey.shade200,
+                                  child: const Icon(Icons.broken_image,
+                                      color: Colors.grey),
+                                ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Expanded(
-                                child: Text(
-                                  visit['title'],
+                              Row(
+                                children: [
+                                  Text('${v.progress}% Complete',
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13)),
+                                  const Spacer(),
+                                  StatusBadge(status: v.status),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                  '${v.timestamp.day}/${v.timestamp.month}/${v.timestamp.year} ${v.timestamp.hour}:${v.timestamp.minute.toString().padLeft(2, '0')}',
                                   style: const TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                              Icon(
-                                getStatusIcon(visit['status']),
-                                color: getStatusColor(visit['status']),
-                                size: 22,
-                              ),
+                                      color: Colors.grey, fontSize: 11)),
+                              if (v.remarks.isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Text(v.remarks,
+                                    style: const TextStyle(fontSize: 12)),
+                              ],
+                              if (v.rejectionReason.isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Text('Reason: ${v.rejectionReason}',
+                                    style: const TextStyle(
+                                        color: Colors.red, fontSize: 11)),
+                              ]
                             ],
                           ),
-                          const SizedBox(height: 6),
-
-                          // Location
-                          Row(
-                            children: [
-                              const Icon(Icons.location_on_outlined,
-                                  size: 13, color: Colors.grey),
-                              const SizedBox(width: 4),
-                              Text(
-                                visit['location'],
-                                style: const TextStyle(
-                                    fontSize: 12, color: Colors.grey),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-
-                          // Date
-                          Row(
-                            children: [
-                              const Icon(Icons.calendar_today_outlined,
-                                  size: 13, color: Colors.grey),
-                              const SizedBox(width: 4),
-                              Text(
-                                visit['date'],
-                                style: const TextStyle(
-                                    fontSize: 12, color: Colors.grey),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-
-                          // Progress bar
-                          Row(
-                            children: [
-                              Expanded(
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(4),
-                                  child: LinearProgressIndicator(
-                                    value: visit['progress'] / 100,
-                                    backgroundColor: AppColors.border,
-                                    color: getStatusColor(visit['status']),
-                                    minHeight: 6,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                '${visit['progress']}%',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-
-                          // Status badge
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: getStatusColor(visit['status'])
-                                  .withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                  color: getStatusColor(visit['status'])),
-                            ),
-                            child: Text(
-                              capitalizeFirst(visit['status']),
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: getStatusColor(visit['status']),
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-        ),
-      ],
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 }

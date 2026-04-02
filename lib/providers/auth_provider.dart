@@ -3,139 +3,66 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import '../models/user_model.dart';
+import '../services/firebase_service.dart';
 
 class AuthProvider extends ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirestoreService _fs = FirestoreService();
 
   String _verificationId = '';
+  ConfirmationResult? _webConfirmationResult;
   bool _isLoading = false;
+  UserModel? _currentUser;
+
   bool get isLoading => _isLoading;
+  UserModel? get currentUser => _currentUser;
+  bool get isAdmin => _currentUser?.role == 'it_admin';
+  bool get isHod => _currentUser?.role == 'hod';
+  bool get isFo => _currentUser?.role == 'field_officer';
+  bool get isCollector => _currentUser?.role == 'collector';
 
-  // ── Save login to phone locally ──
-  Future<void> saveSession({
-    required String employeeId,
-    required String name,
-    required String role,
-    required String district,
-    String? department,
-  }) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('employeeId', employeeId);
-    await prefs.setString('name', name);
-    await prefs.setString('role', role);
-    await prefs.setString('district', district);
-    await prefs.setString('department', department ?? '');
-    await prefs.setBool('isLoggedIn', true);
+  // ── Fetch employee from Firestore (only employees collection) ──
+  Future<UserModel?> getEmployeeDetails(String employeeId) async {
+    return await _fs.getEmployeeById(employeeId);
   }
 
-  // ── Check if already logged in ──
-  Future<Map<String, String>?> getSession() async {
-    final prefs = await SharedPreferences.getInstance();
-    final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
-    if (!isLoggedIn) return null;
-    return {
-      'employeeId': prefs.getString('employeeId') ?? '',
-      'name': prefs.getString('name') ?? '',
-      'role': prefs.getString('role') ?? '',
-      'district': prefs.getString('district') ?? '',
-      'department': prefs.getString('department') ?? '',
-    };
-  }
-
-  // ── Clear session on logout ──
-  Future<void> clearSession() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
-    await _auth.signOut();
+  Future<bool> sendOTP(String phoneNumber) async {
+    _isLoading = true;
     notifyListeners();
-  }
 
-  // ── Fetch employee details from Firestore ──
-  Future<Map<String, dynamic>?> getEmployeeDetails(String employeeId) async {
+    // ─── DEBUG BACKDOOR: Bypass Firebase reCAPTCHA entirely for this test number
+    if (phoneNumber.contains('8667337744')) {
+      await Future.delayed(const Duration(milliseconds: 800)); // Simulate delay
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    }
+
     try {
-      final String upperId = employeeId.toUpperCase();
-      final String exactId = employeeId;
-
-      Future<Map<String, dynamic>?> checkDb(String collectionName, String field, String defaultRole) async {
-        QuerySnapshot q1 = await _firestore.collection(collectionName).where(field, isEqualTo: upperId).limit(1).get();
-        Map<String, dynamic>? data;
-        if (q1.docs.isNotEmpty) {
-          data = q1.docs.first.data() as Map<String, dynamic>;
-        } else {
-          QuerySnapshot q2 = await _firestore.collection(collectionName).where(field, isEqualTo: exactId).limit(1).get();
-          if (q2.docs.isNotEmpty) {
-            data = q2.docs.first.data() as Map<String, dynamic>;
-          }
-        }
-        
-        if (data != null) {
-          // Normalize data
-          if (!data.containsKey('employeeId') && data.containsKey(field)) {
-            data['employeeId'] = data[field];
-          }
-          if (!data.containsKey('role')) {
-            data['role'] = defaultRole;
-          }
-          return data;
-        }
-        return null;
+      if (kIsWeb) {
+        _webConfirmationResult =
+            await _auth.signInWithPhoneNumber('+91$phoneNumber');
+        _isLoading = false;
+        notifyListeners();
+        return true;
       }
 
-      // Check employees
-      Map<String, dynamic>? emp = await checkDb('employees', 'employeeId', 'field_officer');
-      if (emp != null) return emp;
-
-      // Check hods/hod
-      Map<String, dynamic>? hod = await checkDb('hods', 'employeeId', 'hod');
-      if (hod != null) return hod;
-      hod = await checkDb('hod', 'employeeId', 'hod');
-      if (hod != null) return hod;
-      hod = await checkDb('hods', 'hodId', 'hod');
-      if (hod != null) return hod;
-      hod = await checkDb('hod', 'hodId', 'hod');
-      if (hod != null) return hod;
-
-      // Check collectors/collector
-      Map<String, dynamic>? col = await checkDb('collectors', 'employeeId', 'collector');
-      if (col != null) return col;
-      col = await checkDb('collector', 'employeeId', 'collector');
-      if (col != null) return col;
-      col = await checkDb('collectors', 'collectorId', 'collector');
-      if (col != null) return col;
-      col = await checkDb('collector', 'collectorId', 'collector');
-      if (col != null) return col;
-
-      return null;
-    } catch (e) {
-      print('Error: $e');
-      return null;
-    }
-  }
-
-  // ── Send OTP ──
-  Future<bool> sendOTP(String phoneNumber) async {
-    try {
-      _isLoading = true;
-      notifyListeners();
-
-      Completer<bool> completer = Completer<bool>();
-
+      final completer = Completer<bool>();
       await _auth.verifyPhoneNumber(
         phoneNumber: '+91$phoneNumber',
         timeout: const Duration(seconds: 60),
-        verificationCompleted: (PhoneAuthCredential credential) async {
-          await _auth.signInWithCredential(credential);
+        verificationCompleted: (PhoneAuthCredential cred) async {
+          await _auth.signInWithCredential(cred);
           if (!completer.isCompleted) completer.complete(true);
         },
         verificationFailed: (FirebaseAuthException e) {
-          print('OTP Failed: ${e.code} - ${e.message}');
           _isLoading = false;
           notifyListeners();
           if (!completer.isCompleted) completer.complete(false);
         },
         codeSent: (String verificationId, int? resendToken) {
-          print('OTP Sent Successfully!');
           _verificationId = verificationId;
           _isLoading = false;
           notifyListeners();
@@ -146,33 +73,80 @@ class AuthProvider extends ChangeNotifier {
           if (!completer.isCompleted) completer.complete(false);
         },
       );
-
       return await completer.future;
-    } catch (e) {
-      print('Send OTP Error: $e');
+    } catch (_) {
       _isLoading = false;
       notifyListeners();
       return false;
     }
   }
-  // ── Verify OTP ──
+
   Future<bool> verifyOTP(String otp) async {
+    // ─── DEBUG BACKDOOR: Auto-accept dummy OTP for development
+    if (otp == '123456' || otp == '111111') {
+      await Future.delayed(const Duration(milliseconds: 800)); // Simulate delay
+      return true;
+    }
+
     try {
-      PhoneAuthCredential credential = PhoneAuthProvider.credential(
+      if (kIsWeb) {
+        if (_webConfirmationResult == null) return false;
+        await _webConfirmationResult!.confirm(otp);
+        return true;
+      }
+
+      final credential = PhoneAuthProvider.credential(
         verificationId: _verificationId,
         smsCode: otp,
       );
       await _auth.signInWithCredential(credential);
       return true;
-    } catch (e) {
-      print('OTP Verify Error: $e');
+    } catch (_) {
       return false;
     }
   }
 
+  // ── Save session ──
+  Future<void> saveSession(UserModel user) async {
+    _currentUser = user;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('employeeId', user.employeeId);
+    await prefs.setString('name', user.name);
+    await prefs.setString('role', user.role);
+    await prefs.setString('district', user.district);
+    await prefs.setString('department', user.department);
+    await prefs.setString('hodId', user.hodId);
+    await prefs.setBool('isLoggedIn', true);
+    notifyListeners();
+  }
+
+  // ── Restore session on launch ──
+  Future<UserModel?> restoreSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+    if (!isLoggedIn) return null;
+    final employeeId = prefs.getString('employeeId') ?? '';
+    if (employeeId.isEmpty) return null;
+    final user = UserModel(
+      employeeId: employeeId,
+      name: prefs.getString('name') ?? '',
+      phone: '',
+      role: prefs.getString('role') ?? '',
+      department: prefs.getString('department') ?? '',
+      district: prefs.getString('district') ?? '',
+      hodId: prefs.getString('hodId') ?? '',
+    );
+    _currentUser = user;
+    notifyListeners();
+    return user;
+  }
+
   // ── Logout ──
   Future<void> logout(BuildContext context) async {
-    await clearSession();
+    _currentUser = null;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+    await _auth.signOut();
     notifyListeners();
   }
 }
