@@ -196,10 +196,11 @@ class _VisitCardState extends State<_VisitCard> {
                   color: Colors.red),
             // Photo
             if (v.photoUrl.isNotEmpty) ...[
+              const Text('Primary Photo', style: TextStyle(fontSize: 11, color: Colors.grey)),
+              const SizedBox(height: 4),
               GestureDetector(
                 onTap: () => setState(() => _expanded = !_expanded),
                 child: Container(
-                  margin: const EdgeInsets.only(top: 8),
                   decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: Colors.grey.shade200)),
@@ -213,6 +214,60 @@ class _VisitCardState extends State<_VisitCard> {
                         const Center(child: Icon(Icons.broken_image)),
                   ),
                 ),
+              ),
+            ],
+            // Additional Photos
+            if (v.additionalPhotos.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              const Text('Additional Photos', style: TextStyle(fontSize: 11, color: Colors.grey)),
+              const SizedBox(height: 4),
+              SizedBox(
+                height: 80,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: v.additionalPhotos.length,
+                  itemBuilder: (ctx, idx) => GestureDetector(
+                    onTap: () {
+                      showDialog(
+                        context: context,
+                        builder: (_) => Dialog(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Image.network(v.additionalPhotos[idx]),
+                              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      width: 80,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.grey.shade200),
+                      ),
+                      clipBehavior: Clip.hardEdge,
+                      child: Image.network(v.additionalPhotos[idx], fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const Icon(Icons.broken_image)),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+            // Capture Time
+            if (v.photoDateTime != null) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  const Icon(Icons.access_time, size: 14, color: Colors.grey),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Captured at: ${v.photoDateTime!.day}/${v.photoDateTime!.month}/${v.photoDateTime!.year} ${v.photoDateTime!.hour}:${v.photoDateTime!.minute.toString().padLeft(2, '0')}',
+                    style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold),
+                  ),
+                ],
               ),
             ],
             // Signature

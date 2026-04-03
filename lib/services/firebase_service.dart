@@ -4,6 +4,7 @@ import '../models/task_model.dart';
 import '../models/visit_model.dart';
 import '../models/activity_log_model.dart';
 import '../models/notification_model.dart';
+import 'cloudinary_service.dart';
 
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -143,6 +144,30 @@ class FirestoreService {
     });
   }
 
+  Future<void> deleteTask(String taskId) async {
+    try {
+      // 1. Fetch associated visits
+      final visitSnap = await _db.collection('visits').where('taskId', isEqualTo: taskId).get();
+      
+      for (var doc in visitSnap.docs) {
+        final visit = VisitModel.fromMap(doc.data(), doc.id);
+        
+        // 2. Delete assets from Cloudinary
+        await CloudinaryService().deleteImage(visit.photoUrl);
+        await CloudinaryService().deleteImage(visit.signatureUrl);
+        await CloudinaryService().deleteMultipleImages(visit.additionalPhotos);
+        
+        // 3. Delete visit doc
+        await doc.reference.delete();
+      }
+
+      // 4. Delete task doc
+      await _db.collection('tasks').doc(taskId).delete();
+    } catch (e) {
+      throw 'Error deleting task: $e';
+    }
+  }
+
   // ─── VISITS ─────────────────────────────────────────────────
   Future<String> submitVisit(VisitModel visit) async {
     final ref = _db.collection('visits').doc();
@@ -168,6 +193,49 @@ class FirestoreService {
     );
     await ref.set(v.toMap());
     return ref.id;
+  }
+
+  Future<void> submitVisitBatch({
+    required VisitModel visit,
+    required String hodId,
+  }) async {
+    final batch = _db.batch();
+
+    // 1. Visit Doc
+    final visitRef = _db.collection('visits').doc();
+    final v = visit.copyWith(id: visitRef.id, status: 'pending');
+    batch.set(visitRef, v.toMap());
+
+    // 2. Update Task
+    final taskRef = _db.collection('tasks').doc(visit.taskId);
+    batch.update(taskRef, {
+      'totalVisits': FieldValue.increment(1),
+      'lastVisitAt': FieldValue.serverTimestamp(),
+      'status': 'inprogress',
+    });
+
+    // 3. Notification
+    final notifRef = _db.collection('notifications').doc();
+    final notif = NotificationModel(
+      toUserId: hodId,
+      taskId: visit.taskId,
+      title: 'Visit Report Submitted',
+      message: 'Officer ${visit.officerId} submitted a visit report.',
+      type: 'report_submitted',
+    );
+    batch.set(notifRef, notif.toMap());
+
+    // 4. Activity Log
+    final logRef = _db.collection('activityLogs').doc();
+    final log = ActivityLogModel(
+      action: 'visit_submitted',
+      userId: visit.officerId,
+      taskId: visit.taskId,
+      visitId: visitRef.id,
+    );
+    batch.set(logRef, log.toMap());
+
+    await batch.commit();
   }
 
   Stream<List<VisitModel>> getVisitsForTask(String taskId) {
@@ -203,10 +271,25 @@ class FirestoreService {
 
   Future<void> rejectVisit(
       String visitId, String taskId, String reason) async {
+    // 1. Fetch visit to get image URLs
+    final visitDoc = await _db.collection('visits').doc(visitId).get();
+    if (visitDoc.exists) {
+      final visit = VisitModel.fromMap(visitDoc.data()!, visitDoc.id);
+      
+      // 2. Delete assets from Cloudinary
+      await CloudinaryService().deleteImage(visit.photoUrl);
+      await CloudinaryService().deleteImage(visit.signatureUrl);
+      await CloudinaryService().deleteMultipleImages(visit.additionalPhotos);
+    }
+
     final batch = _db.batch();
     batch.update(_db.collection('visits').doc(visitId), {
       'status': 'rejected',
       'rejectionReason': reason,
+      // Clear URLs since files are deleted
+      'photoUrl': '',
+      'signatureUrl': '',
+      'additionalPhotos': [],
     });
     batch.update(_db.collection('tasks').doc(taskId), {'status': 'rejected'});
     await batch.commit();

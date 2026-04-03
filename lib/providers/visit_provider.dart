@@ -8,7 +8,7 @@ class VisitProvider extends ChangeNotifier {
   final FirestoreService _fs = FirestoreService();
 
   // Submit visit with suspicious detection
-  Future<String> submitVisit({
+  Future<void> submitVisit({
     required VisitModel visit,
     required String hodId,
     required DateTime? lastVisitTime,
@@ -20,49 +20,13 @@ class VisitProvider extends ChangeNotifier {
       if (diff < 2) isSusp = true;
     }
 
-    final v = VisitModel(
-      id: '',
-      taskId: visit.taskId,
-      officerId: visit.officerId,
-      photoUrl: visit.photoUrl,
-      additionalPhotos: visit.additionalPhotos,
-      latitude: visit.latitude,
-      longitude: visit.longitude,
-      address: visit.address,
-      gpsAccuracy: visit.gpsAccuracy,
-      photoDateTime: visit.photoDateTime,
-      progress: visit.progress,
-      remarks: visit.remarks,
-      signatureUrl: visit.signatureUrl,
-      isFinalVisit: visit.isFinalVisit,
-      isSuspicious: isSusp,
-      department: visit.department,
-      district: visit.district,
+    final v = visit.copyWith(isSuspicious: isSusp);
+
+    // Optimized batch operation replaces multiple individual calls
+    await _fs.submitVisitBatch(
+      visit: v,
+      hodId: hodId,
     );
-
-    final visitId = await _fs.submitVisit(v);
-    await _fs.incrementTaskVisits(visit.taskId);
-
-    // Status → inprogress after first visit
-    await _fs.updateTaskStatus(visit.taskId, 'inprogress');
-
-    // Notify HOD
-    await _fs.sendNotification(NotificationModel(
-      toUserId: hodId,
-      taskId: visit.taskId,
-      title: 'Visit Report Submitted',
-      message: 'Officer ${visit.officerId} submitted a visit report.',
-      type: 'report_submitted',
-    ));
-
-    await _fs.addActivityLog(ActivityLogModel(
-      action: 'visit_submitted',
-      userId: visit.officerId,
-      taskId: visit.taskId,
-      visitId: visitId,
-    ));
-
-    return visitId;
   }
 
   Stream<List<VisitModel>> visitsForTask(String taskId) =>

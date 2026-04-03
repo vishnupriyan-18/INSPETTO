@@ -97,4 +97,50 @@ class VisitModel {
       'timestamp': Timestamp.fromDate(timestamp),
     };
   }
+
+  VisitModel copyWith({
+    String? id,
+    String? taskId,
+    String? officerId,
+    String? photoUrl,
+    List<String>? additionalPhotos,
+    double? latitude,
+    double? longitude,
+    String? address,
+    double? gpsAccuracy,
+    DateTime? photoDateTime,
+    int? progress,
+    String? remarks,
+    String? signatureUrl,
+    bool? isFinalVisit,
+    String? status,
+    String? rejectionReason,
+    bool? isSuspicious,
+    String? department,
+    String? district,
+    DateTime? timestamp,
+  }) {
+    return VisitModel(
+      id: id ?? this.id,
+      taskId: taskId ?? this.taskId,
+      officerId: officerId ?? this.officerId,
+      photoUrl: photoUrl ?? this.photoUrl,
+      additionalPhotos: additionalPhotos ?? this.additionalPhotos,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      address: address ?? this.address,
+      gpsAccuracy: gpsAccuracy ?? this.gpsAccuracy,
+      photoDateTime: photoDateTime ?? this.photoDateTime,
+      progress: progress ?? this.progress,
+      remarks: remarks ?? this.remarks,
+      signatureUrl: signatureUrl ?? this.signatureUrl,
+      isFinalVisit: isFinalVisit ?? this.isFinalVisit,
+      status: status ?? this.status,
+      rejectionReason: rejectionReason ?? this.rejectionReason,
+      isSuspicious: isSuspicious ?? this.isSuspicious,
+      department: department ?? this.department,
+      district: district ?? this.district,
+      timestamp: timestamp ?? this.timestamp,
+    );
+  }
 }
