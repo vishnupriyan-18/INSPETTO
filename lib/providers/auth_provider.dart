@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -33,7 +32,7 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     // ─── DEBUG BACKDOOR: Bypass Firebase reCAPTCHA entirely for this test number
-    if (phoneNumber.contains('8667337744')) {
+    if (phoneNumber.contains('8667337744') || phoneNumber.contains('0000000000')) {
       await Future.delayed(const Duration(milliseconds: 800)); // Simulate delay
       _isLoading = false;
       notifyListeners();
@@ -83,7 +82,7 @@ class AuthProvider extends ChangeNotifier {
 
   Future<bool> verifyOTP(String otp) async {
     // ─── DEBUG BACKDOOR: Auto-accept dummy OTP for development
-    if (otp == '123456' || otp == '111111') {
+    if (otp == '123456' || otp == '111111' || otp == '000000') {
       await Future.delayed(const Duration(milliseconds: 800)); // Simulate delay
       return true;
     }

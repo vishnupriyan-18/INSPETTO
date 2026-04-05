@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -9,7 +10,7 @@ import '../../models/visit_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/visit_provider.dart';
 import '../../services/location_service.dart';
-import '../../services/storage_service.dart';
+import '../../services/cloudinary_service.dart';
 
 class SubmitVisitScreen extends StatefulWidget {
   final TaskModel task;
@@ -28,11 +29,15 @@ class _SubmitVisitScreenState extends State<SubmitVisitScreen> {
   );
 
   File? _photo;
+  List<File> _additionalPhotos = [];
   Position? _position;
   String? _address;
+  DateTime? _captureTime;
   double _progress = 0;
   bool _isFinal = false;
   bool _isLoading = false;
+  bool _sigLocked = false;
+  Uint8List? _sigImageBytes;
 
   @override
   void initState() {
@@ -56,6 +61,7 @@ class _SubmitVisitScreenState extends State<SubmitVisitScreen> {
         setState(() {
           _position = pos;
           _address = addr;
+          _captureTime = DateTime.now();
         });
       }
     } else {
@@ -76,7 +82,37 @@ class _SubmitVisitScreenState extends State<SubmitVisitScreen> {
       imageQuality: 70,
     );
     if (file != null) {
-      setState(() => _photo = File(file.path));
+      setState(() {
+        if (_photo == null) {
+          _photo = File(file.path);
+        } else {
+          _additionalPhotos.add(File(file.path));
+        }
+      });
+    }
+  }
+
+  Future<void> _pickAdditionalPhoto() async {
+    final picker = ImagePicker();
+    final files = await picker.pickMultiImage(imageQuality: 70);
+    if (files.isNotEmpty) {
+      setState(() {
+        _additionalPhotos.addAll(files.map((f) => File(f.path)));
+      });
+    }
+  }
+
+  Future<void> _lockSignature() async {
+    if (_sigCtrl.isEmpty) {
+      _snack('Please sign before saving!', Colors.orange);
+      return;
+    }
+    final bytes = await _sigCtrl.toPngBytes();
+    if (bytes != null) {
+      setState(() {
+        _sigImageBytes = bytes;
+        _sigLocked = true;
+      });
     }
   }
 
@@ -89,8 +125,8 @@ class _SubmitVisitScreenState extends State<SubmitVisitScreen> {
       _snack('GPS location is required!', Colors.red);
       return;
     }
-    if (_sigCtrl.isEmpty) {
-      _snack('Signature is required!', Colors.red);
+    if (!_sigLocked) {
+      _snack('Please lock your signature first!', Colors.orange);
       return;
     }
 
@@ -99,18 +135,44 @@ class _SubmitVisitScreenState extends State<SubmitVisitScreen> {
     try {
       final officer =
           Provider.of<AuthProvider>(context, listen: false).currentUser!;
-      final signatureBytes = await _sigCtrl.toPngBytes();
 
-      // 1. Upload photo
-      final photoUrl = await StorageService()
-          .uploadVisitPhoto(widget.task.id, officer.employeeId, _photo!);
+      print('Starting parallel uploads to Cloudinary...');
 
-      // 2. Upload sig
-      String sigUrl = '';
-      if (signatureBytes != null) {
-        sigUrl = await StorageService().uploadSignature(
-            widget.task.id, officer.employeeId, signatureBytes);
+      // Prepare all upload futures
+      final List<Future<String?>> uploadFutures = [];
+
+      // 1. Primary photo
+      uploadFutures.add(CloudinaryService().uploadImageToCloudinary(_photo!));
+
+      // 2. Signature
+      uploadFutures.add(CloudinaryService().uploadBytesToCloudinary(
+          _sigImageBytes!,
+          'sig_${officer.employeeId}_${DateTime.now().millisecondsSinceEpoch}.png'));
+
+      // 3. Additional photos
+      for (var file in _additionalPhotos) {
+        uploadFutures.add(CloudinaryService().uploadImageToCloudinary(file));
       }
+
+      // Wait for all uploads to complete
+      final results = await Future.wait(uploadFutures);
+
+      final photoUrl = results[0];
+      final sigUrl = results[1] ?? '';
+      final List<String> additionalUrls = [];
+      for (int i = 2; i < results.length; i++) {
+        if (results[i] != null) {
+          additionalUrls.add(results[i]!);
+        }
+      }
+
+      if (photoUrl == null) {
+        _snack('Primary photo upload failed. Please try again.', Colors.red);
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      print('All uploads completed successfully.');
 
       // 3. Build model
       final visit = VisitModel(
@@ -118,10 +180,12 @@ class _SubmitVisitScreenState extends State<SubmitVisitScreen> {
         taskId: widget.task.id,
         officerId: officer.employeeId,
         photoUrl: photoUrl,
+        additionalPhotos: additionalUrls,
         latitude: _position!.latitude,
         longitude: _position!.longitude,
         address: _address ?? '',
         gpsAccuracy: _position!.accuracy,
+        photoDateTime: _captureTime,
         progress: _progress.toInt(),
         remarks: _remarksCtrl.text.trim(),
         signatureUrl: sigUrl,
@@ -246,6 +310,14 @@ class _SubmitVisitScreenState extends State<SubmitVisitScreen> {
                               style: TextStyle(
                                   fontSize: 11,
                                   color: Colors.green.shade900)),
+                        if (_captureTime != null)
+                          Text(
+                            'Captured at: ${_captureTime!.day}/${_captureTime!.month}/${_captureTime!.year} ${_captureTime!.hour}:${_captureTime!.minute.toString().padLeft(2, '0')}',
+                            style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green.shade900),
+                          ),
                       ],
                     ),
                   ),
@@ -305,32 +377,123 @@ class _SubmitVisitScreenState extends State<SubmitVisitScreen> {
             ),
             const SizedBox(height: 24),
 
-            // Signature
+            // Additional Photos
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Additional Photos (Optional)',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                IconButton(
+                  icon: const Icon(Icons.add_a_photo_outlined),
+                  onPressed: _pickAdditionalPhoto,
+                ),
+              ],
+            ),
+            if (_additionalPhotos.isNotEmpty)
+              SizedBox(
+                height: 100,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _additionalPhotos.length,
+                  itemBuilder: (ctx, i) => Container(
+                    margin: const EdgeInsets.only(right: 10),
+                    width: 100,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.grey.shade300),
+                    ),
+                    child: Stack(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: Image.file(_additionalPhotos[i],
+                              width: 100, height: 100, fit: BoxFit.cover),
+                        ),
+                        Positioned(
+                          right: 0,
+                          top: 0,
+                          child: GestureDetector(
+                            onTap: () => setState(() => _additionalPhotos.removeAt(i)),
+                            child: Container(
+                              color: Colors.black.withOpacity(0.5),
+                              child: const Icon(Icons.close, color: Colors.white, size: 20),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            const SizedBox(height: 24),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text('Officer Signature *',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                TextButton(
-                  onPressed: () => _sigCtrl.clear(),
-                  child: const Text('Clear', style: TextStyle(color: Colors.red)),
-                ),
+                if (!_sigLocked)
+                  TextButton(
+                    onPressed: () => _sigCtrl.clear(),
+                    child: const Text('Clear', style: TextStyle(color: Colors.red)),
+                  ),
               ],
             ),
             Container(
               decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey.shade300),
+                border: Border.all(color: _sigLocked ? Colors.green : Colors.grey.shade300),
                 borderRadius: BorderRadius.circular(12),
+                color: _sigLocked ? Colors.green.shade50 : Colors.grey.shade50,
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: Signature(
-                  controller: _sigCtrl,
-                  height: 150,
-                  backgroundColor: Colors.grey.shade50,
-                ),
+                child: _sigLocked
+                    ? Center(
+                        child: Column(
+                          children: [
+                            const SizedBox(height: 10),
+                            Image.memory(_sigImageBytes!, height: 130),
+                            const Text('Signature Saved & Locked',
+                                style: TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 10),
+                          ],
+                        ),
+                      )
+                    : Signature(
+                        controller: _sigCtrl,
+                        height: 150,
+                        backgroundColor: Colors.transparent,
+                      ),
               ),
             ),
+            if (!_sigLocked)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue.shade800,
+                      foregroundColor: Colors.white,
+                    ),
+                    icon: const Icon(Icons.save),
+                    label: const Text('Save Signature'),
+                    onPressed: _lockSignature,
+                  ),
+                ),
+              ),
+            if (_sigLocked)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: TextButton.icon(
+                  icon: const Icon(Icons.edit_note, size: 18),
+                  label: const Text('Redo Signature'),
+                  onPressed: () => setState(() {
+                    _sigLocked = false;
+                    _sigImageBytes = null;
+                    _sigCtrl.clear();
+                  }),
+                ),
+              ),
             const SizedBox(height: 40),
 
             // Submit Button

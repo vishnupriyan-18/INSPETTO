@@ -143,6 +143,14 @@ class FirestoreService {
     });
   }
 
+  Future<void> deleteTask(String taskId) async {
+    try {
+      await _db.collection('tasks').doc(taskId).delete();
+    } catch (e) {
+      throw 'Error deleting task: $e';
+    }
+  }
+
   // ─── VISITS ─────────────────────────────────────────────────
   Future<String> submitVisit(VisitModel visit) async {
     final ref = _db.collection('visits').doc();
