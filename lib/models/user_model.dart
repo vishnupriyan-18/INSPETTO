@@ -5,6 +5,7 @@ class UserModel {
   final String name;
   final String phone;
   final String role; // it_admin | hod | field_officer | collector
+  final String designation;
   final String department;
   final String district;
   final String hodId;
@@ -18,6 +19,7 @@ class UserModel {
     required this.name,
     required this.phone,
     required this.role,
+    required this.designation,
     required this.department,
     required this.district,
     this.hodId = '',
@@ -33,6 +35,7 @@ class UserModel {
       name: map['name'] ?? '',
       phone: map['phone'] ?? '',
       role: map['role'] ?? 'field_officer',
+      designation: map['designation'] ?? '',
       department: map['department'] ?? '',
       district: map['district'] ?? '',
       hodId: map['hodId'] ?? '',
@@ -51,6 +54,7 @@ class UserModel {
       'name': name,
       'phone': phone,
       'role': role,
+      'designation': designation,
       'department': department,
       'district': district,
       'hodId': hodId,
@@ -66,6 +70,7 @@ class UserModel {
     String? name,
     String? phone,
     String? role,
+    String? designation,
     String? department,
     String? district,
     String? hodId,
@@ -79,6 +84,7 @@ class UserModel {
       name: name ?? this.name,
       phone: phone ?? this.phone,
       role: role ?? this.role,
+      designation: designation ?? this.designation,
       department: department ?? this.department,
       district: district ?? this.district,
       hodId: hodId ?? this.hodId,

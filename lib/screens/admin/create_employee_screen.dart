@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import '../../models/user_model.dart';
-import '../../providers/auth_provider.dart';
 import '../../services/firebase_service.dart';
 
 class CreateEmployeeScreen extends StatefulWidget {
@@ -40,14 +38,18 @@ class _CreateEmployeeScreenState extends State<CreateEmployeeScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
 
-    final adminId = Provider.of<AuthProvider>(context, listen: false)
-        .currentUser?.employeeId ?? '';
+    String designation = '';
+    if (_role == 'it_admin') designation = 'IT Administrator';
+    else if (_role == 'hod') designation = 'Head of Department';
+    else if (_role == 'field_officer') designation = 'Field Officer';
+    else if (_role == 'collector') designation = 'District Collector';
 
     final user = UserModel(
       employeeId: _empIdCtrl.text.trim().toUpperCase(),
       name: _nameCtrl.text.trim(),
       phone: _phoneCtrl.text.trim(),
       role: _role,
+      designation: designation,
       department: _department,
       district: _district,
       hodId: _role == 'field_officer' ? _hodIdCtrl.text.trim().toUpperCase() : '',

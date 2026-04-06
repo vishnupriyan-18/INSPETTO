@@ -31,8 +31,11 @@ class AuthProvider extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
-    // ─── DEBUG BACKDOOR: Bypass Firebase reCAPTCHA entirely for this test number
-    if (phoneNumber.contains('8667337744') || phoneNumber.contains('0000000000')) {
+    // ─── DEBUG BACKDOOR: Bypass Firebase reCAPTCHA entirely for test numbers
+    if (phoneNumber.contains('8667337744') || 
+        phoneNumber.contains('0000000000') ||
+        phoneNumber.contains('9999999999') ||
+        phoneNumber.contains('8888888888')) {
       await Future.delayed(const Duration(milliseconds: 800)); // Simulate delay
       _isLoading = false;
       notifyListeners();
@@ -112,6 +115,7 @@ class AuthProvider extends ChangeNotifier {
     await prefs.setString('employeeId', user.employeeId);
     await prefs.setString('name', user.name);
     await prefs.setString('role', user.role);
+    await prefs.setString('designation', user.designation);
     await prefs.setString('district', user.district);
     await prefs.setString('department', user.department);
     await prefs.setString('hodId', user.hodId);
@@ -131,6 +135,7 @@ class AuthProvider extends ChangeNotifier {
       name: prefs.getString('name') ?? '',
       phone: '',
       role: prefs.getString('role') ?? '',
+      designation: prefs.getString('designation') ?? '',
       department: prefs.getString('department') ?? '',
       district: prefs.getString('district') ?? '',
       hodId: prefs.getString('hodId') ?? '',

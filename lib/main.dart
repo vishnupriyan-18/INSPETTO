@@ -39,6 +39,7 @@ Future<void> _injectInitialData() async {
       'name': 'System Admin',
       'phone': '+910000000000',
       'role': 'it_admin',
+      'designation': 'IT Administrator',
       'department': 'All',
       'district': 'All',
       'isActive': true,
@@ -48,10 +49,57 @@ Future<void> _injectInitialData() async {
       'name': 'District Collector',
       'phone': '8667337744',
       'role': 'collector',
+      'designation': 'District Collector',
       'department': 'All',
       'district': 'Coimbatore',
       'isActive': true,
     }, SetOptions(merge: true));
+
+    // ─── ADDING COIMBATORE SAMPLE DATA ─────────────────────────
+    // 1. HOD Coimbatore
+    await db.collection('employees').doc('HOD001').set({
+      'employeeId': 'HOD001',
+      'name': 'HOD Coimbatore',
+      'phone': '9999999999',
+      'role': 'hod',
+      'designation': 'Head of Department',
+      'department': 'Highways',
+      'district': 'Coimbatore',
+      'isActive': true,
+    }, SetOptions(merge: true));
+
+    // 2. Field Officer Coimbatore
+    await db.collection('employees').doc('FO001').set({
+      'employeeId': 'FO001',
+      'name': 'Officer Coimbatore',
+      'phone': '8888888888',
+      'role': 'field_officer',
+      'designation': 'Field Officer',
+      'department': 'Highways',
+      'district': 'Coimbatore',
+      'hodId': 'HOD001',
+      'isActive': true,
+    }, SetOptions(merge: true));
+
+    // 3. Sample Task
+    final taskRef = db.collection('tasks').doc('TASK001');
+    final taskDoc = await taskRef.get();
+    if (!taskDoc.exists) {
+      await taskRef.set({
+        'title': 'Bridge Inspection - Coimbatore',
+        'location': 'Gandhipuram Flyover',
+        'purpose': 'Routine structural check',
+        'priority': 'high',
+        'deadline': Timestamp.fromDate(DateTime.now().add(const Duration(days: 5))),
+        'assignedTo': 'FO001',
+        'createdBy': 'HOD001',
+        'status': 'assigned',
+        'department': 'Highways',
+        'district': 'Coimbatore',
+        'totalVisits': 0,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+    }
   } catch (e) {
     debugPrint('Injection failed: $e');
   }

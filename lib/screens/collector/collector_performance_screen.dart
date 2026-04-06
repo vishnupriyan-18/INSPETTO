@@ -11,23 +11,40 @@ class CollectorPerformanceScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final district = context.watch<AuthProvider>().currentUser?.district ?? '';
+    debugPrint("Collector Performance (Filtering Field Officers) District: '$district'");
 
     // Step 1: Get all field officers in district
     return StreamBuilder<List<UserModel>>(
       stream: FirestoreService()
           .getEmployeesStream(role: 'field_officer')
-          .map((list) => list.where((u) => u.district == district).toList()),
+          .map((list) {
+            debugPrint("Total Field Officers in DB: ${list.length}");
+            final filtered = list.where((u) => 
+                u.district.trim().toLowerCase() == district.trim().toLowerCase()
+            ).toList();
+            debugPrint("Filtered Field Officers in '$district': ${filtered.length}");
+            return filtered;
+          }),
       builder: (ctx, officerSnap) {
         if (officerSnap.connectionState == ConnectionState.waiting) {
-          return const Center(
-              child: CircularProgressIndicator(color: Colors.black));
+          return const Center(child: CircularProgressIndicator(color: Colors.black));
         }
 
         final officers = officerSnap.data ?? [];
         if (officers.isEmpty) {
-          return const Center(
-              child: Text('No field officers in this district',
-                  style: TextStyle(color: Colors.grey)));
+          return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.group_off_outlined, size: 64, color: Colors.grey),
+                  const SizedBox(height: 16),
+                  Text('No field officers found in $district',
+                      style: const TextStyle(color: Colors.grey)),
+                  const SizedBox(height: 8),
+                  const Text('Check if officers have the correct district set.',
+                      style: TextStyle(color: Colors.grey, fontSize: 10)),
+                ],
+              ));
         }
 
         return ListView.separated(
@@ -43,11 +60,9 @@ class CollectorPerformanceScreen extends StatelessWidget {
                 final tasks = taskSnap.data ?? [];
                 final total = tasks.length;
                 final completed = tasks
-                    .where(
-                        (t) => t.status == 'completed' || t.status == 'approved')
+                    .where((t) => t.status == 'completed' || t.status == 'approved')
                     .length;
-                final missed =
-                    tasks.where((t) => t.status == 'missed').length;
+                final missed = tasks.where((t) => t.status == 'missed').length;
                 final pct = total > 0 ? (completed / total * 100) : 0.0;
 
                 return Card(
@@ -65,9 +80,7 @@ class CollectorPerformanceScreen extends StatelessWidget {
                             CircleAvatar(
                               backgroundColor: Colors.black,
                               child: Text(
-                                  officer.name.isNotEmpty
-                                      ? officer.name[0]
-                                      : '?',
+                                  officer.name.isNotEmpty ? officer.name[0] : '?',
                                   style: const TextStyle(color: Colors.white)),
                             ),
                             const SizedBox(width: 12),
@@ -77,12 +90,9 @@ class CollectorPerformanceScreen extends StatelessWidget {
                                 children: [
                                   Text(officer.name,
                                       style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 15)),
-                                  Text(
-                                      '${officer.employeeId} | ${officer.department}',
-                                      style: const TextStyle(
-                                          color: Colors.grey, fontSize: 12)),
+                                          fontWeight: FontWeight.bold, fontSize: 15)),
+                                  Text('${officer.employeeId} | ${officer.department}',
+                                      style: const TextStyle(color: Colors.grey, fontSize: 12)),
                                 ],
                               ),
                             ),
@@ -99,8 +109,7 @@ class CollectorPerformanceScreen extends StatelessWidget {
                                                 ? Colors.orange
                                                 : Colors.red)),
                                 const Text('Completion',
-                                    style: TextStyle(
-                                        color: Colors.grey, fontSize: 10)),
+                                    style: TextStyle(color: Colors.grey, fontSize: 10)),
                               ],
                             ),
                           ],
@@ -137,10 +146,8 @@ class CollectorPerformanceScreen extends StatelessWidget {
         child: Column(
           children: [
             Text(value,
-                style: TextStyle(
-                    fontWeight: FontWeight.bold, fontSize: 16, color: color)),
-            Text(label,
-                style: TextStyle(color: color, fontSize: 10)),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: color)),
+            Text(label, style: TextStyle(color: color, fontSize: 10)),
           ],
         ),
       ),

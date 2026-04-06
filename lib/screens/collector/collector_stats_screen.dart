@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../models/task_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/firebase_service.dart';
+import '../../widgets/profile_card.dart';
 
 class CollectorStatsScreen extends StatefulWidget {
   const CollectorStatsScreen({super.key});
@@ -18,15 +19,18 @@ class _CollectorStatsScreenState extends State<CollectorStatsScreen> {
   Widget build(BuildContext context) {
     final appUser = context.watch<AuthProvider>().currentUser;
     final district = appUser?.district ?? '';
+    debugPrint("Collector Dashboard District: '$district'");
 
     return StreamBuilder<List<TaskModel>>(
       stream: FirestoreService().getTasksByDistrict(district),
       builder: (ctx, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(
-              child: CircularProgressIndicator(color: Colors.black));
+          return const Center(child: CircularProgressIndicator(color: Colors.black));
         }
+        
         var tasks = snap.data ?? [];
+        debugPrint("Raw Tasks Count from Firestore for '$district': ${tasks.length}");
+
         if (_departmentFilter != 'All') {
           tasks = tasks.where((t) => t.department == _departmentFilter).toList();
         }
@@ -49,9 +53,10 @@ class _CollectorStatsScreenState extends State<CollectorStatsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('District: $district',
-                        style: const TextStyle(
-                            fontSize: 22, fontWeight: FontWeight.bold)),
+                    if (appUser != null) ProfileCard(user: appUser),
+                    const SizedBox(height: 24),
+                    const Text('District Overview',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 16),
                     // Department Filter
                     SingleChildScrollView(
@@ -67,17 +72,13 @@ class _CollectorStatsScreenState extends State<CollectorStatsScreen> {
                         ].map((dept) => Padding(
                                 padding: const EdgeInsets.only(right: 8),
                                 child: FilterChip(
-                                  label: Text(dept,
-                                      style: const TextStyle(fontSize: 12)),
+                                  label: Text(dept, style: const TextStyle(fontSize: 12)),
                                   selected: _departmentFilter == dept,
-                                  onSelected: (_) =>
-                                      setState(() => _departmentFilter = dept),
+                                  onSelected: (_) => setState(() => _departmentFilter = dept),
                                   selectedColor: Colors.black,
                                   checkmarkColor: Colors.white,
                                   labelStyle: TextStyle(
-                                      color: _departmentFilter == dept
-                                          ? Colors.white
-                                          : Colors.black),
+                                      color: _departmentFilter == dept ? Colors.white : Colors.black),
                                 ),
                               ))
                             .toList(),
@@ -95,8 +96,7 @@ class _CollectorStatsScreenState extends State<CollectorStatsScreen> {
                       child: Column(
                         children: [
                           const Text('Overall Completion',
-                              style: TextStyle(
-                                  color: Colors.white70, fontSize: 14)),
+                              style: TextStyle(color: Colors.white70, fontSize: 14)),
                           const SizedBox(height: 8),
                           Text('$pct%',
                               style: const TextStyle(
@@ -116,8 +116,7 @@ class _CollectorStatsScreenState extends State<CollectorStatsScreen> {
                     ),
                     const SizedBox(height: 24),
                     const Text('Task Metrics',
-                        style: TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.bold)),
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 12),
                     Row(
                       children: [
@@ -173,8 +172,7 @@ class _StatCard extends StatelessWidget {
                   style: TextStyle(
                       fontSize: 28, fontWeight: FontWeight.bold, color: color)),
               const SizedBox(height: 4),
-              Text(label,
-                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
             ],
           ),
         ),
