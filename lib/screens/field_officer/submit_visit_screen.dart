@@ -140,37 +140,45 @@ class _SubmitVisitScreenState extends State<SubmitVisitScreen> {
       final officer =
           Provider.of<AuthProvider>(context, listen: false).currentUser!;
 
+      setState(() => _status = 'Uploading assets...');
+      print('Starting parallel uploads to Cloudinary...');
+
+      // Prepare all upload futures
+      final List<Future<String?>> uploadFutures = [];
+
       // 1. Primary photo
-      setState(() => _status = 'Uploading primary photo...');
-      final photoUrl = await CloudinaryService().uploadImageToCloudinary(_photo!);
+      uploadFutures.add(CloudinaryService().uploadImageToCloudinary(_photo!));
+
+      // 2. Signature
+      uploadFutures.add(CloudinaryService().uploadBytesToCloudinary(
+          _sigImageBytes!,
+          'sig_${officer.employeeId}_${DateTime.now().millisecondsSinceEpoch}.png'));
+
+      // 3. Additional photos
+      for (var file in _additionalPhotos) {
+        uploadFutures.add(CloudinaryService().uploadImageToCloudinary(file));
+      }
+
+      // Wait for all uploads to complete
+      final results = await Future.wait(uploadFutures);
+
+      final photoUrl = results[0];
+      final sigUrl = results[1];
+      final List<String> additionalUrls = [];
+      for (int i = 2; i < results.length; i++) {
+        if (results[i] != null) {
+          additionalUrls.add(results[i]!);
+        }
+      }
+
       if (photoUrl == null) {
-        _snack('Primary photo upload failed.', Colors.red);
+        _snack('Primary photo upload failed. Please try again.', Colors.red);
         setState(() => _isLoading = false);
         return;
       }
 
-      // 2. Signature
-      setState(() => _status = 'Uploading signature...');
-      final sigUrl = await CloudinaryService().uploadBytesToCloudinary(
-          _sigImageBytes!,
-          'sig_${officer.employeeId}_${DateTime.now().millisecondsSinceEpoch}.png');
-
-      // 3. Additional photos (in parallel)
-      final List<String> additionalUrls = [];
-      if (_additionalPhotos.isNotEmpty) {
-        setState(() => _status = 'Uploading ${_additionalPhotos.length} additional photos...');
-        final List<Future<String?>> uploadFutures = _additionalPhotos
-            .map((file) => CloudinaryService().uploadImageToCloudinary(file))
-            .toList();
-        final results = await Future.wait(uploadFutures);
-        for (var res in results) {
-          if (res != null) additionalUrls.add(res);
-        }
-      }
-
+      print('All uploads completed successfully.');
       setState(() => _status = 'Finalizing report...');
-
-      // 4. Build model
       final visit = VisitModel(
         id: '',
         taskId: widget.task.id,
