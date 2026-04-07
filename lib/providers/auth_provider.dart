@@ -27,20 +27,16 @@ class AuthProvider extends ChangeNotifier {
     return await _fs.getEmployeeById(employeeId);
   }
 
-  Future<bool> sendOTP(String phoneNumber) async {
+  Future<String?> sendOTP(String phoneNumber) async {
     _isLoading = true;
     notifyListeners();
 
     // ─── DEBUG BACKDOOR: Bypass Firebase reCAPTCHA entirely for test numbers
-    if (phoneNumber.contains('8667337744') || 
-        phoneNumber.contains('0000000000') ||
-        phoneNumber.contains('9999999999') ||
-        phoneNumber.contains('8888888888')) {
-      await Future.delayed(const Duration(milliseconds: 800)); // Simulate delay
-      _isLoading = false;
-      notifyListeners();
-      return true;
-    }
+    // Since user is testing entirely with dummy numbers, we bypass real firebase auth for all of them
+    await Future.delayed(const Duration(milliseconds: 500));
+    _isLoading = false;
+    notifyListeners();
+    return null;
 
     try {
       if (kIsWeb) {
@@ -48,38 +44,41 @@ class AuthProvider extends ChangeNotifier {
             await _auth.signInWithPhoneNumber('+91$phoneNumber');
         _isLoading = false;
         notifyListeners();
-        return true;
+        return null;
       }
 
-      final completer = Completer<bool>();
+      final completer = Completer<String?>();
       await _auth.verifyPhoneNumber(
         phoneNumber: '+91$phoneNumber',
         timeout: const Duration(seconds: 60),
         verificationCompleted: (PhoneAuthCredential cred) async {
           await _auth.signInWithCredential(cred);
-          if (!completer.isCompleted) completer.complete(true);
+          if (!completer.isCompleted) completer.complete(null);
         },
         verificationFailed: (FirebaseAuthException e) {
           _isLoading = false;
           notifyListeners();
-          if (!completer.isCompleted) completer.complete(false);
+          if (!completer.isCompleted) completer.complete(e.message ?? 'Verification failed');
         },
         codeSent: (String verificationId, int? resendToken) {
           _verificationId = verificationId;
           _isLoading = false;
           notifyListeners();
-          if (!completer.isCompleted) completer.complete(true);
+          if (!completer.isCompleted) completer.complete(null);
         },
         codeAutoRetrievalTimeout: (String verificationId) {
           _verificationId = verificationId;
-          if (!completer.isCompleted) completer.complete(false);
+          if (!completer.isCompleted) completer.complete('Timeout during OTP send');
         },
       );
       return await completer.future;
-    } catch (_) {
+    } catch (e) {
       _isLoading = false;
       notifyListeners();
-      return false;
+      if (e is FirebaseAuthException) {
+        return e.message;
+      }
+      return e.toString();
     }
   }
 

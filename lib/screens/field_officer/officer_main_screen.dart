@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../../providers/auth_provider.dart';
 import '../../widgets/notification_bell.dart';
+import '../../widgets/profile_avatar_button.dart';
 import 'officer_home_screen.dart';
 import 'officer_history_screen.dart';
 
@@ -31,17 +30,7 @@ class _OfficerMainScreenState extends State<OfficerMainScreen> {
                 letterSpacing: 1.5)),
         actions: [
           const NotificationBell(iconColor: Colors.white),
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
-            onPressed: () async {
-              await Provider.of<AuthProvider>(context, listen: false)
-                  .logout(context);
-              if (mounted) {
-                Navigator.pushNamedAndRemoveUntil(
-                    context, '/', (route) => false);
-              }
-            },
-          ),
+          const ProfileAvatarButton(),
         ],
       ),
       body: screens[_index],

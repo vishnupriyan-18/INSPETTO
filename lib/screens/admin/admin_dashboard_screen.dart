@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../../providers/auth_provider.dart';
 import '../../services/firebase_service.dart';
 import '../../models/user_model.dart';
-import '../../widgets/profile_card.dart';
 
 class AdminDashboardScreen extends StatelessWidget {
   const AdminDashboardScreen({super.key});
@@ -32,9 +29,6 @@ class AdminDashboardScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (context.watch<AuthProvider>().currentUser != null)
-                ProfileCard(user: context.watch<AuthProvider>().currentUser!),
-              const SizedBox(height: 24),
               const Text('System Overview',
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
               const SizedBox(height: 4),

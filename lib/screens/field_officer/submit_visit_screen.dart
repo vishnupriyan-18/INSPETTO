@@ -131,92 +131,100 @@ class _SubmitVisitScreenState extends State<SubmitVisitScreen> {
       return;
     }
 
+    final officer = Provider.of<AuthProvider>(context, listen: false).currentUser!;
+    final visitProvider = Provider.of<VisitProvider>(context, listen: false);
+    final messenger = ScaffoldMessenger.of(context);
+    final nav = Navigator.of(context);
+
+    // Save variables before popping
+    final photoFile = _photo!;
+    final sigBytes = _sigImageBytes!;
+    final extraPhotos = List<File>.from(_additionalPhotos);
+    final pos = _position!;
+    final addr = _address;
+    final capTime = _captureTime;
+    final prog = _progress.toInt();
+    final rem = _remarksCtrl.text.trim();
+    final isFin = _isFinal;
+    final tId = widget.task.id;
+    final hodId = widget.task.createdBy;
+    final reqTime = widget.task.lastVisitAt;
+
     setState(() {
       _isLoading = true;
-      _status = 'Preparing uploads...';
+      _status = 'Uploading assets...';
     });
 
     try {
-      final officer =
-          Provider.of<AuthProvider>(context, listen: false).currentUser!;
-
-      setState(() => _status = 'Uploading assets...');
-      print('Starting parallel uploads to Cloudinary...');
-
-      // Prepare all upload futures
       final List<Future<String?>> uploadFutures = [];
 
-      // 1. Primary photo
-      uploadFutures.add(CloudinaryService().uploadImageToCloudinary(_photo!));
-
-      // 2. Signature
+      uploadFutures.add(CloudinaryService().uploadImageToCloudinary(photoFile));
       uploadFutures.add(CloudinaryService().uploadBytesToCloudinary(
-          _sigImageBytes!,
+          sigBytes,
           'sig_${officer.employeeId}_${DateTime.now().millisecondsSinceEpoch}.png'));
 
-      // 3. Additional photos
       for (var file in _additionalPhotos) {
         uploadFutures.add(CloudinaryService().uploadImageToCloudinary(file));
       }
 
-      // Wait for all uploads to complete
       final results = await Future.wait(uploadFutures);
+
+      setState(() {
+        _status = 'Saving record...';
+      });
 
       final photoUrl = results[0];
       final sigUrl = results[1];
       final List<String> additionalUrls = [];
       for (int i = 2; i < results.length; i++) {
-        if (results[i] != null) {
-          additionalUrls.add(results[i]!);
-        }
+        if (results[i] != null) additionalUrls.add(results[i]!);
       }
 
       if (photoUrl == null) {
-        _snack('Primary photo upload failed. Please try again.', Colors.red);
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Failed to upload primary photo. Check logs.'), backgroundColor: Colors.red),
+        );
         setState(() => _isLoading = false);
         return;
       }
 
-      print('All uploads completed successfully.');
-      setState(() => _status = 'Finalizing report...');
       final visit = VisitModel(
         id: '',
-        taskId: widget.task.id,
+        taskId: tId,
         officerId: officer.employeeId,
         photoUrl: photoUrl,
         additionalPhotos: additionalUrls,
-        latitude: _position!.latitude,
-        longitude: _position!.longitude,
-        address: _address ?? '',
-        gpsAccuracy: _position!.accuracy,
-        photoDateTime: _captureTime,
-        progress: _progress.toInt(),
-        remarks: _remarksCtrl.text.trim(),
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+        address: addr ?? '',
+        gpsAccuracy: pos.accuracy,
+        photoDateTime: capTime,
+        progress: prog,
+        remarks: rem,
         signatureUrl: sigUrl ?? '',
-        isFinalVisit: _isFinal,
+        isFinalVisit: isFin,
         department: officer.department,
         district: officer.district,
       );
 
-      // 5. Save (Optimized Batch)
-      await Provider.of<VisitProvider>(context, listen: false).submitVisit(
+      await visitProvider.submitVisit(
         visit: visit,
-        hodId: widget.task.createdBy,
-        lastVisitTime: widget.task.lastVisitAt,
+        hodId: hodId,
+        lastVisitTime: reqTime,
       );
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Visit report submitted successfully!'),
-              backgroundColor: Colors.green),
-        );
-        Navigator.pop(context); // back to list
-      }
+      messenger.showSnackBar(
+        const SnackBar(
+            content: Text('Visit report successfully submitted!'),
+            backgroundColor: Colors.green),
+      );
+      nav.pop();
     } catch (e) {
-      _snack('Error: $e', Colors.red);
+      messenger.showSnackBar(
+         SnackBar(content: Text('Upload failed: $e'), backgroundColor: Colors.red),
+      );
+      setState(() => _isLoading = false);
     }
-    if (mounted) setState(() => _isLoading = false);
   }
 
   void _snack(String msg, Color c) {

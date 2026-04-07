@@ -45,10 +45,6 @@ class ProfileCard extends StatelessWidget {
                         user.name,
                         style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                       ),
-                      Text(
-                        user.designation.isNotEmpty ? user.designation : 'Employee',
-                        style: TextStyle(color: Colors.blue.shade800, fontWeight: FontWeight.w600, fontSize: 13),
-                      ),
                     ],
                   ),
                 ),

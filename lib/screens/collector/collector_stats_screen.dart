@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import '../../models/task_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/firebase_service.dart';
-import '../../widgets/profile_card.dart';
 
 class CollectorStatsScreen extends StatefulWidget {
   const CollectorStatsScreen({super.key});
@@ -53,8 +52,6 @@ class _CollectorStatsScreenState extends State<CollectorStatsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (appUser != null) ProfileCard(user: appUser),
-                    const SizedBox(height: 24),
                     const Text('District Overview',
                         style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 16),

@@ -65,6 +65,19 @@ class FirestoreService {
     await _db.collection('employees').doc(employeeId).update({'isActive': isActive});
   }
 
+  Future<void> updateEmployeeDetails(String employeeId, String name, String phone, String district, String department) async {
+    await _db.collection('employees').doc(employeeId).update({
+      'name': name,
+      'phone': phone,
+      'district': district,
+      'department': department,
+    });
+  }
+
+  Future<void> deleteEmployee(String employeeId) async {
+    await _db.collection('employees').doc(employeeId).delete();
+  }
+
   Future<void> updateFcmToken(String employeeId, String token) async {
     await _db.collection('employees').doc(employeeId).update({'fcmToken': token});
   }
@@ -263,9 +276,24 @@ class FirestoreService {
   }
 
   Future<void> approveVisit(String visitId, String taskId) async {
+    // 1. Check if the visit is final or 100% progress
+    final visitDoc = await _db.collection('visits').doc(visitId).get();
+    bool isFinal = false;
+    if (visitDoc.exists) {
+      final data = visitDoc.data()!;
+      isFinal = data['isFinalVisit'] == true || (data['progress'] ?? 0) == 100;
+    }
+
     final batch = _db.batch();
     batch.update(_db.collection('visits').doc(visitId), {'status': 'approved'});
-    batch.update(_db.collection('tasks').doc(taskId), {'status': 'approved'});
+    
+    // Only mark the task itself as approved (closed) if this was the final visit
+    if (isFinal) {
+      batch.update(_db.collection('tasks').doc(taskId), {'status': 'approved'});
+    } else {
+      batch.update(_db.collection('tasks').doc(taskId), {'status': 'inprogress'});
+    }
+    
     await batch.commit();
   }
 

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../models/task_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/task_provider.dart';
+import '../../services/firebase_service.dart';
 import '../../widgets/status_badge.dart';
 import 'submit_visit_screen.dart';
 
@@ -39,6 +40,46 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     if (mounted) setState(() => _isLoading = false);
   }
 
+  void _confirmDeleteTask(BuildContext context, String taskId) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Task', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+        content: const Text('Are you sure you want to completely delete this task? All associated visit reports and photos will also be permanently deleted from the database and Cloudinary.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              setState(() => _isLoading = true);
+              try {
+                await FirestoreService().deleteTask(taskId);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Task and all data deleted successfully'), backgroundColor: Colors.red),
+                  );
+                  Navigator.pop(context); // close detail screen
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Delete failed: $e'), backgroundColor: Colors.red),
+                  );
+                }
+              }
+              if (mounted) setState(() => _isLoading = false);
+            },
+            child: const Text('Delete Permanently', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      )
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = widget.task;
@@ -51,6 +92,13 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         backgroundColor: Colors.black,
         iconTheme: const IconThemeData(color: Colors.white),
         title: const Text('Task Details', style: TextStyle(color: Colors.white)),
+        actions: [
+          if (Provider.of<AuthProvider>(context).isHod || Provider.of<AuthProvider>(context).isAdmin)
+            IconButton(
+              icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+              onPressed: () => _confirmDeleteTask(context, t.id),
+            ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),

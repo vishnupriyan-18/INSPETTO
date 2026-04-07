@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../../providers/auth_provider.dart';
 import '../../widgets/notification_bell.dart';
+import '../../widgets/profile_avatar_button.dart';
 import 'admin_dashboard_screen.dart';
 import 'create_employee_screen.dart';
 import 'manage_employees_screen.dart';
@@ -30,17 +29,7 @@ class _AdminMainScreenState extends State<AdminMainScreen> {
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
         actions: [
           const NotificationBell(iconColor: Colors.white),
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
-            onPressed: () async {
-              await Provider.of<AuthProvider>(context, listen: false)
-                  .logout(context);
-              if (mounted) {
-                Navigator.pushNamedAndRemoveUntil(
-                    context, '/', (route) => false);
-              }
-            },
-          ),
+          const ProfileAvatarButton(),
         ],
       ),
       body: screens[_index],

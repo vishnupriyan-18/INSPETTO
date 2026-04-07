@@ -4,7 +4,6 @@ import '../../models/task_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/firebase_service.dart';
 import '../../widgets/status_badge.dart';
-import '../../widgets/profile_card.dart';
 import 'hod_review_screen.dart';
 
 class HodHomeScreen extends StatelessWidget {
@@ -27,9 +26,6 @@ class HodHomeScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (context.watch<AuthProvider>().currentUser != null)
-                ProfileCard(user: context.watch<AuthProvider>().currentUser!),
-              const SizedBox(height: 20),
               const Text(
                 'Departmental Overview',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
