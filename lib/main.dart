@@ -15,8 +15,8 @@ import 'package:provider/provider.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  await NotificationService().initialize();
-  await _injectInitialData(); // Auto-create IT001 and COL001
+  NotificationService().initialize(); // Run async to prevent blocking launch
+  _injectInitialData(); // Auto-create IT001 and COL001
   runApp(
     MultiProvider(
       providers: [

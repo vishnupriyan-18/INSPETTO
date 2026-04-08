@@ -206,52 +206,54 @@ class _SubmitVisitScreenState extends State<SubmitVisitScreen> {
     });
 
     try {
-      // ── STEP 1: Write to Firestore immediately with placeholder URLs ──
-      // Image URLs will be patched in background after upload completes.
-      final visit = VisitModel(
-        id: '',
-        taskId: tId,
-        officerId: employeeId,
-        photoUrl: 'uploading',        // placeholder
-        additionalPhotos: const [],
-        latitude: pos.latitude,
-        longitude: pos.longitude,
-        address: addr ?? '',
-        gpsAccuracy: pos.accuracy,
-        photoDateTime: capTime,
-        progress: prog,
-        remarks: rem,
-        signatureUrl: 'uploading',    // placeholder
-        isFinalVisit: isFin,
-        department: department,
-        district: district,
-      );
-
-      // This writes to Firestore (batch: visit + task update + notification + log)
-      final visitId = await visitProvider.submitVisit(
-        visit: visit,
-        hodId: hodId,
-        lastVisitTime: reqTime,
-      );
-
-      // ── STEP 2: Show success and navigate back immediately ──
+      // ── STEP 1: Show success and navigate back immediately ──
       messenger.showSnackBar(
         const SnackBar(
-            content: Text('Visit report submitted! Photos uploading in background…'),
+            content: Text('Visit report processing! Syncing with backend in background...'),
             backgroundColor: Colors.green,
             duration: Duration(seconds: 4)),
       );
       nav.pop();
 
-      // ── STEP 3: Upload to Cloudinary in the background ──
-      // No await here — fire and forget. Updates Firestore when done.
-      _uploadAndPatchVisit(
-        visitId: visitId,
-        photoFile: photoFile,
-        sigBytes: sigBytes,
-        sigFileName: 'sig_${employeeId}_${DateTime.now().millisecondsSinceEpoch}.png',
-        extraPhotos: extraPhotos,
-      );
+      // ── STEP 2: Background Firestore Update & Cloudinary Upload ──
+      Future(() async {
+        try {
+          final visit = VisitModel(
+            id: '',
+            taskId: tId,
+            officerId: employeeId,
+            photoUrl: 'uploading',
+            additionalPhotos: const [],
+            latitude: pos.latitude,
+            longitude: pos.longitude,
+            address: addr ?? '',
+            gpsAccuracy: pos.accuracy,
+            photoDateTime: capTime,
+            progress: prog,
+            remarks: rem,
+            signatureUrl: 'uploading',
+            isFinalVisit: isFin,
+            department: department,
+            district: district,
+          );
+
+          final visitId = await visitProvider.submitVisit(
+            visit: visit,
+            hodId: hodId,
+            lastVisitTime: reqTime,
+          );
+
+          _uploadAndPatchVisit(
+            visitId: visitId,
+            photoFile: photoFile,
+            sigBytes: sigBytes,
+            sigFileName: 'sig_${employeeId}_${DateTime.now().millisecondsSinceEpoch}.png',
+            extraPhotos: extraPhotos,
+          );
+        } catch (bgError) {
+          debugPrint('Background submission error: $bgError');
+        }
+      });
     } catch (e) {
       messenger.showSnackBar(
          SnackBar(content: Text('Submit failed: $e'), backgroundColor: Colors.red),

@@ -94,12 +94,14 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
     );
 
     try {
-      await Provider.of<TaskProvider>(context, listen: false)
+      // Execute asynchronously to keep UI fast
+      Provider.of<TaskProvider>(context, listen: false)
           .createTask(task, hod.employeeId);
+          
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-              content: Text('Task created and assigned!'),
+              content: Text('Task successfully created and assigned!'),
               backgroundColor: Colors.green),
         );
         _formKey.currentState?.reset();

@@ -22,6 +22,16 @@ class _OfficerMainScreenState extends State<OfficerMainScreen> {
     ];
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () {
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            } else {
+              Navigator.of(context).pushReplacementNamed('/');
+            }
+          },
+        ),
         backgroundColor: Colors.black,
         title: const Text('INSPETTO Officer',
             style: TextStyle(
