@@ -46,6 +46,7 @@ dependencies:
   internet_connection_checker: ^3.0.1
   http: ^1.2.2
   crypto: ^3.0.7
+  image_gallery_saver_plus: ^4.0.1
 
 dev_dependencies:
   flutter_test:

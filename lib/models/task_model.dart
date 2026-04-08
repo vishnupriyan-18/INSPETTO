@@ -14,6 +14,7 @@ class TaskModel {
   final String district;
   final int totalVisits;
   final DateTime? lastVisitAt;
+  final int progress;
   final bool isDemo;
   final DateTime timestamp;
 
@@ -31,6 +32,7 @@ class TaskModel {
     required this.district,
     this.totalVisits = 0,
     this.lastVisitAt,
+    this.progress = 0,
     this.isDemo = false,
     DateTime? timestamp,
   }) : timestamp = timestamp ?? DateTime.now();
@@ -54,6 +56,7 @@ class TaskModel {
       lastVisitAt: map['lastVisitAt'] is Timestamp
           ? (map['lastVisitAt'] as Timestamp).toDate()
           : null,
+      progress: (map['progress'] ?? 0) as int,
       isDemo: map['isDemo'] ?? false,
       timestamp: map['timestamp'] is Timestamp
           ? (map['timestamp'] as Timestamp).toDate()
@@ -75,6 +78,7 @@ class TaskModel {
       'district': district,
       'totalVisits': totalVisits,
       'lastVisitAt': lastVisitAt != null ? Timestamp.fromDate(lastVisitAt!) : null,
+      'progress': progress,
       'isDemo': isDemo,
       'timestamp': Timestamp.fromDate(timestamp),
     };

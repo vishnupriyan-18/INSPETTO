@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:http/http.dart' as http;
+import 'package:image_gallery_saver_plus/image_gallery_saver_plus.dart';
 import '../../models/task_model.dart';
 import '../../models/visit_model.dart';
 import '../../providers/auth_provider.dart';
@@ -195,24 +198,53 @@ class _VisitCardState extends State<_VisitCard> {
               _infoRow(Icons.cancel_outlined, 'Rejected: ${v.rejectionReason}',
                   color: Colors.red),
             // Photo
-            if (v.photoUrl.isNotEmpty) ...[
+            if (v.photoUrl.isNotEmpty && v.photoUrl != 'uploading') ...[
               const Text('Primary Photo', style: TextStyle(fontSize: 11, color: Colors.grey)),
               const SizedBox(height: 4),
               GestureDetector(
-                onTap: () => setState(() => _expanded = !_expanded),
-                child: Container(
-                  decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.grey.shade200)),
-                  clipBehavior: Clip.hardEdge,
-                  child: Image.network(
-                    v.photoUrl,
-                    height: _expanded ? 300 : 150,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) =>
-                        const Center(child: Icon(Icons.broken_image)),
+                onTap: () => _openImageViewer(context, v.photoUrl),
+                child: Hero(
+                  tag: 'photo_${v.id}',
+                  child: Container(
+                    decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.grey.shade200)),
+                    clipBehavior: Clip.hardEdge,
+                    child: Image.network(
+                      v.photoUrl,
+                      height: _expanded ? 300 : 150,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) =>
+                          const Center(child: Icon(Icons.broken_image)),
+                    ),
                   ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              TextButton.icon(
+                icon: const Icon(Icons.fullscreen, size: 16),
+                label: const Text('Open Full Screen'),
+                style: TextButton.styleFrom(foregroundColor: Colors.black, padding: EdgeInsets.zero),
+                onPressed: () => _openImageViewer(context, v.photoUrl),
+              ),
+            ] else if (v.photoUrl == 'uploading') ...[
+              const Text('Primary Photo', style: TextStyle(fontSize: 11, color: Colors.grey)),
+              const SizedBox(height: 4),
+              Container(
+                height: 80,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                    SizedBox(width: 10),
+                    Text('Photo uploading...', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  ],
                 ),
               ),
             ],
@@ -227,30 +259,20 @@ class _VisitCardState extends State<_VisitCard> {
                   scrollDirection: Axis.horizontal,
                   itemCount: v.additionalPhotos.length,
                   itemBuilder: (ctx, idx) => GestureDetector(
-                    onTap: () {
-                      showDialog(
-                        context: context,
-                        builder: (_) => Dialog(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Image.network(v.additionalPhotos[idx]),
-                              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
-                            ],
-                          ),
+                    onTap: () => _openImageViewer(context, v.additionalPhotos[idx]),
+                    child: Hero(
+                      tag: 'addphoto_${v.id}_$idx',
+                      child: Container(
+                        margin: const EdgeInsets.only(right: 8),
+                        width: 80,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey.shade200),
                         ),
-                      );
-                    },
-                    child: Container(
-                      margin: const EdgeInsets.only(right: 8),
-                      width: 80,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.grey.shade200),
+                        clipBehavior: Clip.hardEdge,
+                        child: Image.network(v.additionalPhotos[idx], fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => const Icon(Icons.broken_image)),
                       ),
-                      clipBehavior: Clip.hardEdge,
-                      child: Image.network(v.additionalPhotos[idx], fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => const Icon(Icons.broken_image)),
                     ),
                   ),
                 ),
@@ -271,13 +293,34 @@ class _VisitCardState extends State<_VisitCard> {
               ),
             ],
             // Signature
-            if (v.signatureUrl.isNotEmpty) ...[
+            if (v.signatureUrl.isNotEmpty && v.signatureUrl != 'uploading') ...[
               const SizedBox(height: 8),
               const Text('Signature',
                   style: TextStyle(fontSize: 11, color: Colors.grey)),
               const SizedBox(height: 4),
               Image.network(v.signatureUrl, height: 60,
                   errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+            ] else if (v.signatureUrl == 'uploading') ...[
+              const SizedBox(height: 8),
+              const Text('Signature', style: TextStyle(fontSize: 11, color: Colors.grey)),
+              const SizedBox(height: 4),
+              Container(
+                height: 40,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2)),
+                    SizedBox(width: 8),
+                    Text('Uploading signature...', style: TextStyle(color: Colors.grey, fontSize: 11)),
+                  ],
+                ),
+              ),
             ],
             // Approve/Reject buttons (only if pending)
             if (v.status == 'pending') ...[
@@ -332,6 +375,100 @@ class _VisitCardState extends State<_VisitCard> {
                     fontSize: 12, color: color ?? Colors.black87)),
           ),
         ],
+      ),
+    );
+  }
+
+  void _openImageViewer(BuildContext context, String imageUrl) {
+    Navigator.of(context).push(PageRouteBuilder(
+      opaque: false,
+      barrierColor: Colors.black87,
+      pageBuilder: (_, __, ___) => _FullScreenImageViewer(imageUrl: imageUrl),
+    ));
+  }
+}
+
+// ─── Full-Screen Image Viewer with Save ─────────────────────────────────────
+
+class _FullScreenImageViewer extends StatefulWidget {
+  final String imageUrl;
+  const _FullScreenImageViewer({required this.imageUrl});
+
+  @override
+  State<_FullScreenImageViewer> createState() => _FullScreenImageViewerState();
+}
+
+class _FullScreenImageViewerState extends State<_FullScreenImageViewer> {
+  bool _isSaving = false;
+
+  Future<void> _saveToGallery() async {
+    setState(() => _isSaving = true);
+    try {
+      final response = await http.get(Uri.parse(widget.imageUrl));
+      if (response.statusCode == 200) {
+        final result = await ImageGallerySaverPlus.saveImage(
+          response.bodyBytes,
+          quality: 100,
+          name: 'inspetto_${DateTime.now().millisecondsSinceEpoch}',
+        );
+        if (mounted) {
+          final saved = result['isSuccess'] == true || result['filePath'] != null;
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(saved ? '✓ Image saved to gallery!' : 'Could not save image'),
+            backgroundColor: saved ? Colors.green : Colors.red,
+          ));
+        }
+      } else {
+        throw Exception('Download failed');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Save failed: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          _isSaving
+              ? const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: SizedBox(
+                    width: 20, height: 20,
+                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                  ),
+                )
+              : IconButton(
+                  icon: const Icon(Icons.download_rounded, color: Colors.white),
+                  tooltip: 'Save to Gallery',
+                  onPressed: _saveToGallery,
+                ),
+        ],
+      ),
+      body: Center(
+        child: InteractiveViewer(
+          minScale: 0.5,
+          maxScale: 5.0,
+          child: Image.network(
+            widget.imageUrl,
+            fit: BoxFit.contain,
+            loadingBuilder: (_, child, progress) {
+              if (progress == null) return child;
+              return const Center(child: CircularProgressIndicator(color: Colors.white));
+            },
+            errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: Colors.white, size: 60),
+          ),
+        ),
       ),
     );
   }

@@ -7,8 +7,8 @@ import '../services/firebase_service.dart';
 class VisitProvider extends ChangeNotifier {
   final FirestoreService _fs = FirestoreService();
 
-  // Submit visit with suspicious detection
-  Future<void> submitVisit({
+  // Submit visit with suspicious detection — returns the new visitId
+  Future<String> submitVisit({
     required VisitModel visit,
     required String hodId,
     required DateTime? lastVisitTime,
@@ -22,8 +22,8 @@ class VisitProvider extends ChangeNotifier {
 
     final v = visit.copyWith(isSuspicious: isSusp);
 
-    // Optimized batch operation replaces multiple individual calls
-    await _fs.submitVisitBatch(
+    // Optimized batch operation replaces multiple individual calls; returns visitId
+    return await _fs.submitVisitBatch(
       visit: v,
       hodId: hodId,
     );

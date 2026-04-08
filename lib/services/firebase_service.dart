@@ -97,6 +97,7 @@ class FirestoreService {
       status: task.status,
       department: task.department,
       district: task.district,
+      progress: 0,
     );
     await ref.set(t.toMap());
     return ref.id;
@@ -208,7 +209,7 @@ class FirestoreService {
     return ref.id;
   }
 
-  Future<void> submitVisitBatch({
+  Future<String> submitVisitBatch({
     required VisitModel visit,
     required String hodId,
   }) async {
@@ -225,6 +226,7 @@ class FirestoreService {
       'totalVisits': FieldValue.increment(1),
       'lastVisitAt': FieldValue.serverTimestamp(),
       'status': 'inprogress',
+      'progress': visit.progress,
     });
 
     // 3. Notification
@@ -249,6 +251,7 @@ class FirestoreService {
     batch.set(logRef, log.toMap());
 
     await batch.commit();
+    return visitRef.id;
   }
 
   Stream<List<VisitModel>> getVisitsForTask(String taskId) {

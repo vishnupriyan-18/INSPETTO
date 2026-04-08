@@ -1,10 +1,14 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:local_auth/local_auth.dart';
+import 'package:pin_code_fields/pin_code_fields.dart';
 import 'package:provider/provider.dart';
 import 'package:signature/signature.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/task_model.dart';
 import '../../models/visit_model.dart';
 import '../../providers/auth_provider.dart';
@@ -43,6 +47,7 @@ class _SubmitVisitScreenState extends State<SubmitVisitScreen> {
   @override
   void initState() {
     super.initState();
+    _progress = widget.task.progress.toDouble();
     _fetchLocation();
   }
 
@@ -131,12 +136,54 @@ class _SubmitVisitScreenState extends State<SubmitVisitScreen> {
       return;
     }
 
+    // --- AUTHENTICATION CHECK ---
+    final LocalAuthentication auth = LocalAuthentication();
+    bool isAuthenticated = false;
+
+    try {
+      final bool canAuthenticateWithBiometrics = await auth.canCheckBiometrics;
+      final bool canAuthenticate =
+          canAuthenticateWithBiometrics || await auth.isDeviceSupported();
+
+      if (canAuthenticate) {
+        isAuthenticated = await auth.authenticate(
+          localizedReason: 'Please authenticate to submit your visit report',
+          options: const AuthenticationOptions(
+            stickyAuth: true,
+            biometricOnly: false,
+          ),
+        );
+
+        if (!isAuthenticated) {
+          _snack('Authentication required to submit', Colors.red);
+          return;
+        }
+      } else {
+        isAuthenticated = await _fallbackToOTP();
+        if (!isAuthenticated) return;
+      }
+    } on PlatformException catch (e) {
+      if (e.code == 'NotEnrolled' ||
+          e.code == 'PasscodeNotSet' ||
+          e.code == 'DeviceCredentialsNotEnrolled') {
+        isAuthenticated = await _fallbackToOTP();
+        if (!isAuthenticated) return;
+      } else {
+        _snack('Authentication error: ${e.message}', Colors.red);
+        return;
+      }
+    } catch (e) {
+      isAuthenticated = await _fallbackToOTP();
+      if (!isAuthenticated) return;
+    }
+    // --- END AUTHENTICATION CHECK ---
+
     final officer = Provider.of<AuthProvider>(context, listen: false).currentUser!;
     final visitProvider = Provider.of<VisitProvider>(context, listen: false);
     final messenger = ScaffoldMessenger.of(context);
     final nav = Navigator.of(context);
 
-    // Save variables before popping
+    // Capture all values before async gap
     final photoFile = _photo!;
     final sigBytes = _sigImageBytes!;
     final extraPhotos = List<File>.from(_additionalPhotos);
@@ -149,51 +196,24 @@ class _SubmitVisitScreenState extends State<SubmitVisitScreen> {
     final tId = widget.task.id;
     final hodId = widget.task.createdBy;
     final reqTime = widget.task.lastVisitAt;
+    final employeeId = officer.employeeId;
+    final department = officer.department;
+    final district = officer.district;
 
     setState(() {
       _isLoading = true;
-      _status = 'Uploading assets...';
+      _status = 'Saving record...';
     });
 
     try {
-      final List<Future<String?>> uploadFutures = [];
-
-      uploadFutures.add(CloudinaryService().uploadImageToCloudinary(photoFile));
-      uploadFutures.add(CloudinaryService().uploadBytesToCloudinary(
-          sigBytes,
-          'sig_${officer.employeeId}_${DateTime.now().millisecondsSinceEpoch}.png'));
-
-      for (var file in _additionalPhotos) {
-        uploadFutures.add(CloudinaryService().uploadImageToCloudinary(file));
-      }
-
-      final results = await Future.wait(uploadFutures);
-
-      setState(() {
-        _status = 'Saving record...';
-      });
-
-      final photoUrl = results[0];
-      final sigUrl = results[1];
-      final List<String> additionalUrls = [];
-      for (int i = 2; i < results.length; i++) {
-        if (results[i] != null) additionalUrls.add(results[i]!);
-      }
-
-      if (photoUrl == null) {
-        messenger.showSnackBar(
-          const SnackBar(content: Text('Failed to upload primary photo. Check logs.'), backgroundColor: Colors.red),
-        );
-        setState(() => _isLoading = false);
-        return;
-      }
-
+      // ── STEP 1: Write to Firestore immediately with placeholder URLs ──
+      // Image URLs will be patched in background after upload completes.
       final visit = VisitModel(
         id: '',
         taskId: tId,
-        officerId: officer.employeeId,
-        photoUrl: photoUrl,
-        additionalPhotos: additionalUrls,
+        officerId: employeeId,
+        photoUrl: 'uploading',        // placeholder
+        additionalPhotos: const [],
         latitude: pos.latitude,
         longitude: pos.longitude,
         address: addr ?? '',
@@ -201,30 +221,119 @@ class _SubmitVisitScreenState extends State<SubmitVisitScreen> {
         photoDateTime: capTime,
         progress: prog,
         remarks: rem,
-        signatureUrl: sigUrl ?? '',
+        signatureUrl: 'uploading',    // placeholder
         isFinalVisit: isFin,
-        department: officer.department,
-        district: officer.district,
+        department: department,
+        district: district,
       );
 
-      await visitProvider.submitVisit(
+      // This writes to Firestore (batch: visit + task update + notification + log)
+      final visitId = await visitProvider.submitVisit(
         visit: visit,
         hodId: hodId,
         lastVisitTime: reqTime,
       );
 
+      // ── STEP 2: Show success and navigate back immediately ──
       messenger.showSnackBar(
         const SnackBar(
-            content: Text('Visit report successfully submitted!'),
-            backgroundColor: Colors.green),
+            content: Text('Visit report submitted! Photos uploading in background…'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 4)),
       );
       nav.pop();
+
+      // ── STEP 3: Upload to Cloudinary in the background ──
+      // No await here — fire and forget. Updates Firestore when done.
+      _uploadAndPatchVisit(
+        visitId: visitId,
+        photoFile: photoFile,
+        sigBytes: sigBytes,
+        sigFileName: 'sig_${employeeId}_${DateTime.now().millisecondsSinceEpoch}.png',
+        extraPhotos: extraPhotos,
+      );
     } catch (e) {
       messenger.showSnackBar(
-         SnackBar(content: Text('Upload failed: $e'), backgroundColor: Colors.red),
+         SnackBar(content: Text('Submit failed: $e'), backgroundColor: Colors.red),
       );
       setState(() => _isLoading = false);
     }
+  }
+
+  /// Runs in background after the screen is already gone.
+  /// Uploads all media to Cloudinary and patches the Firestore visit document.
+  void _uploadAndPatchVisit({
+    required String visitId,
+    required File photoFile,
+    required Uint8List sigBytes,
+    required String sigFileName,
+    required List<File> extraPhotos,
+  }) {
+    Future(() async {
+      try {
+        final cs = CloudinaryService();
+        // Upload primary photo + signature in parallel
+        final mainResults = await Future.wait([
+          cs.uploadImageToCloudinary(photoFile),
+          cs.uploadBytesToCloudinary(sigBytes, sigFileName),
+        ]);
+
+        final photoUrl = mainResults[0] ?? '';
+        final sigUrl = mainResults[1] ?? '';
+
+        // Upload extra photos
+        final extraUrls = <String>[];
+        for (final f in extraPhotos) {
+          final url = await cs.uploadImageToCloudinary(f);
+          if (url != null) extraUrls.add(url);
+        }
+
+        // Patch the Firestore document with real URLs
+        if (visitId.isNotEmpty) {
+          await FirebaseFirestore.instance.collection('visits').doc(visitId).update({
+            'photoUrl': photoUrl,
+            'signatureUrl': sigUrl,
+            'additionalPhotos': extraUrls,
+          });
+        }
+        debugPrint('Background upload complete for visit $visitId');
+      } catch (e) {
+        debugPrint('Background upload error for visit $visitId: $e');
+      }
+    });
+  }
+
+  Future<bool> _fallbackToOTP() async {
+    final authProv = Provider.of<AuthProvider>(context, listen: false);
+    final officerId = authProv.currentUser!.employeeId;
+
+    _snack('No device lock detected. Verifying via OTP...', Colors.blue);
+    setState(() => _isLoading = true);
+
+    final user = await authProv.getEmployeeDetails(officerId);
+    setState(() => _isLoading = false);
+
+    if (user == null || user.phone.isEmpty) {
+      _snack('No phone number registered for OTP fallack.', Colors.red);
+      return false;
+    }
+
+    setState(() => _isLoading = true);
+    final error = await authProv.sendOTP(user.phone);
+    setState(() => _isLoading = false);
+
+    if (error != null) {
+      _snack(error, Colors.red);
+      return false;
+    }
+
+    final bool? result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => _OTPDialog(phone: user.phone),
+    );
+
+    return result ?? false;
   }
 
   void _snack(String msg, Color c) {
@@ -550,6 +659,82 @@ class _SubmitVisitScreenState extends State<SubmitVisitScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _OTPDialog extends StatefulWidget {
+  final String phone;
+  const _OTPDialog({required this.phone});
+
+  @override
+  State<_OTPDialog> createState() => _OTPDialogState();
+}
+
+class _OTPDialogState extends State<_OTPDialog> {
+  final TextEditingController _otpCtrl = TextEditingController();
+  bool _isVerifying = false;
+
+  Future<void> _verify() async {
+    if (_otpCtrl.text.length != 6) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter 6-digit OTP'), backgroundColor: Colors.red));
+      return;
+    }
+
+    setState(() => _isVerifying = true);
+    final authProv = Provider.of<AuthProvider>(context, listen: false);
+    final success = await authProv.verifyOTP(_otpCtrl.text.trim());
+    if (!mounted) return;
+    setState(() => _isVerifying = false);
+
+    if (success) {
+      Navigator.of(context).pop(true);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid OTP. Please try again.'), backgroundColor: Colors.red));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('OTP Verification', style: TextStyle(fontWeight: FontWeight.bold)),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Enter the 6-digit code sent to +91 ${widget.phone}', style: const TextStyle(fontSize: 13, color: Colors.grey)),
+          const SizedBox(height: 20),
+          PinCodeTextField(
+            appContext: context,
+            length: 6,
+            controller: _otpCtrl,
+            keyboardType: TextInputType.number,
+            pinTheme: PinTheme(
+              shape: PinCodeFieldShape.box,
+              borderRadius: BorderRadius.circular(8),
+              fieldHeight: 45,
+              fieldWidth: 35,
+              activeColor: Colors.black,
+              selectedColor: Colors.black,
+              inactiveColor: Colors.grey.shade300,
+            ),
+            onChanged: (val) {},
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isVerifying ? null : () => Navigator.of(context).pop(false),
+          child: const Text('Cancel', style: TextStyle(color: Colors.red)),
+        ),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(backgroundColor: Colors.black, foregroundColor: Colors.white),
+          onPressed: _isVerifying ? null : _verify,
+          child: _isVerifying 
+              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) 
+              : const Text('Verify'),
+        ),
+      ],
     );
   }
 }
